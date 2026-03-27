@@ -1,0 +1,203 @@
+import { useState } from 'react';
+import { Thermometer, Droplets, Lightbulb, Fan, DoorOpen, DoorClosed } from 'lucide-react';
+import { Switch } from './ui/switch';
+import { motion } from 'motion/react';
+import { useLanguage } from '../contexts/LanguageContext';
+
+export function HomeDashboard() {
+  const { t } = useLanguage();
+  const [lightOn, setLightOn] = useState(false);
+  const [fanOn, setFanOn] = useState(false);
+  const [doorOpen, setDoorOpen] = useState(false);
+
+  const temperature = 28;
+  const humidity = 65;
+
+  return (
+    <div className="p-8 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-4xl mb-2">{t('home.title')}</h1>
+        <p className="text-muted-foreground">{t('home.subtitle')}</p>
+      </div>
+
+      {/* Temperature & Humidity Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-[#38BDF8]/20 rounded-xl">
+              <Thermometer className="w-6 h-6 text-[#38BDF8]" />
+            </div>
+            <span className="text-sm text-muted-foreground">{t('home.temperature')}</span>
+          </div>
+          <div className="space-y-1">
+            <div className="text-4xl">{temperature}°C</div>
+            <p className="text-xs text-muted-foreground">{t('home.updatedNow')}</p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-3 bg-[#38BDF8]/20 rounded-xl">
+              <Droplets className="w-6 h-6 text-[#38BDF8]" />
+            </div>
+            <span className="text-sm text-muted-foreground">{t('home.humidity')}</span>
+          </div>
+          <div className="space-y-1">
+            <div className="text-4xl">{humidity}%</div>
+            <p className="text-xs text-muted-foreground">{t('home.updatedNow')}</p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`p-3 rounded-xl transition-colors ${lightOn ? 'bg-[#FACC15]/20' : 'bg-muted'}`}>
+              <Lightbulb className={`w-6 h-6 transition-colors ${lightOn ? 'text-[#FACC15]' : 'text-muted-foreground'}`} />
+            </div>
+            <span className="text-sm text-muted-foreground">{t('home.activeLights')}</span>
+          </div>
+          <div className="space-y-1">
+            <div className="text-4xl">{lightOn ? '1' : '0'}</div>
+            <p className="text-xs text-muted-foreground">{lightOn ? t('home.on') : t('home.allOff')}</p>
+          </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className={`p-3 rounded-xl transition-colors ${doorOpen ? 'bg-[#EF4444]/20' : 'bg-green-500/20'}`}>
+              {doorOpen ? (
+                <DoorOpen className="w-6 h-6 text-[#EF4444]" />
+              ) : (
+                <DoorClosed className="w-6 h-6 text-green-500" />
+              )}
+            </div>
+            <span className="text-sm text-muted-foreground">{t('home.doorStatus')}</span>
+          </div>
+          <div className="space-y-1">
+            <div className={`text-4xl ${doorOpen ? 'text-[#EF4444]' : 'text-green-500'}`}>
+              {doorOpen ? t('home.open') : t('home.closed')}
+            </div>
+            <p className="text-xs text-muted-foreground">{t('home.frontDoor')}</p>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Quick Controls Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Quick Controls */}
+        <div className="space-y-4">
+          <h2 className="text-2xl mb-4">{t('home.quickControls')}</h2>
+          
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl transition-colors ${lightOn ? 'bg-[#FACC15]/20' : 'bg-muted'}`}>
+                  <Lightbulb className={`w-6 h-6 transition-colors ${lightOn ? 'text-[#FACC15]' : 'text-muted-foreground'}`} />
+                </div>
+                <div>
+                  <div className="text-lg">{t('home.livingRoomLight')}</div>
+                  <p className="text-sm text-muted-foreground">{lightOn ? t('home.on') : t('home.off')}</p>
+                </div>
+              </div>
+              <Switch checked={lightOn} onCheckedChange={setLightOn} />
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.6 }}
+            className="bg-card p-6 rounded-2xl border border-border shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className={`p-3 rounded-xl transition-colors ${fanOn ? 'bg-[#38BDF8]/20' : 'bg-muted'}`}>
+                  <Fan className={`w-6 h-6 transition-all ${fanOn ? 'text-[#38BDF8] animate-spin' : 'text-muted-foreground'}`} style={{ animationDuration: '2s' }} />
+                </div>
+                <div>
+                  <div className="text-lg">{t('home.ceilingFan')}</div>
+                  <p className="text-sm text-muted-foreground">{fanOn ? t('home.on') : t('home.off')}</p>
+                </div>
+              </div>
+              <Switch checked={fanOn} onCheckedChange={setFanOn} />
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Door Status */}
+        <div className="space-y-4">
+          <h2 className="text-2xl mb-4">{t('home.security')}</h2>
+          
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="bg-card p-6 rounded-2xl border border-border shadow-lg h-full"
+          >
+            <div className="flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className={`p-3 rounded-xl transition-colors ${doorOpen ? 'bg-[#EF4444]/20' : 'bg-green-500/20'}`}>
+                    {doorOpen ? (
+                      <DoorOpen className="w-8 h-8 text-[#EF4444]" />
+                    ) : (
+                      <DoorClosed className="w-8 h-8 text-green-500" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-lg">{t('home.frontDoorName')}</div>
+                    <p className={`text-sm ${doorOpen ? 'text-[#EF4444]' : 'text-green-500'}`}>
+                      {doorOpen ? t('home.open') : t('home.closed')}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDoorOpen(!doorOpen)}
+                  className="px-6 py-2 bg-accent hover:bg-accent/80 rounded-lg transition-colors text-sm"
+                >
+                  {t('home.toggle')}
+                </button>
+              </div>
+              {doorOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="bg-[#EF4444]/10 border border-[#EF4444]/20 p-4 rounded-xl"
+                >
+                  <p className="text-sm text-[#EF4444]">
+                    ⚠️ {t('home.alert')}
+                  </p>
+                </motion.div>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+}
