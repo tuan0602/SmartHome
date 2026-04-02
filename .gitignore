@@ -1,4 +1,15 @@
+# Thư viện React
 node_modules/
+
+# Thư mục build sản phẩm cuối cùng
+/build
+/dist
+
+# Các file môi trường của React
 .env
-dist/
-build/
+.env.local
+.env.development.local
+
+# Các file rác của hệ thống hoặc trình duyệt
+.DS_Store
+Thumbs.db

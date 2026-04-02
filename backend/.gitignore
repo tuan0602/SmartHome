@@ -1,0 +1,14 @@
+# Thư viện Node.js
+node_modules/
+
+# File Admin Firebase 
+serviceAccountKey.json
+smart-home-94b7d-firebase-adminsdk-*.json
+
+# File cấu hình môi trường 
+.env
+
+# Các file log lỗi
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
