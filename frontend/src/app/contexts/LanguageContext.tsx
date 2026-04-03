@@ -84,7 +84,7 @@ const translations: Translations = {
   'security.recentEvent': { en: 'Most recent event', vi: 'Sự kiện gần nhất' },
   'security.activityLog': { en: 'Activity Log', vi: 'Nhật ký hoạt động' },
   'security.doorOpened': { en: 'Door opened', vi: 'Cửa đã mở' },
-  'security.doorClosed': { en: 'Door closed', vi: 'Cửa đã đóng' },
+  // 'security.doorClosed': { en: 'Door closed', vi: 'Cửa đã đóng' },
   
   // Notifications
   'notifications.title': { en: 'Notifications', vi: 'Thông báo' },

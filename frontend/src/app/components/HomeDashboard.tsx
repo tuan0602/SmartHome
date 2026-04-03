@@ -1,17 +1,66 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Thermometer, Droplets, Lightbulb, Fan, DoorOpen, DoorClosed } from 'lucide-react';
 import { Switch } from './ui/switch';
 import { motion } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
 
+// firebase imports
+import { db } from '../../firebase'; 
+import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 export function HomeDashboard() {
   const { t } = useLanguage();
+
+  // State for sensor data and device statuses
+  const [sensorData, setSensorData] = useState({ temperature: 0, humidity: 0 });
+  // Device states (in a real app, these would also come from Firebase)
   const [lightOn, setLightOn] = useState(false);
   const [fanOn, setFanOn] = useState(false);
   const [doorOpen, setDoorOpen] = useState(false);
 
-  const temperature = 28;
-  const humidity = 65;
+  useEffect(() => {
+    // 1. Tạo câu truy vấn: Vào bảng 'sensor_data', sắp xếp thời gian giảm dần, lấy 1 cái mới nhất
+    const q = query(
+      collection(db, "sensor_data"), 
+      orderBy("timestamp", "desc"), 
+      limit(1)
+    );
+
+    // 2. Lắng nghe thay đổi (onSnapshot)
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        const data = snapshot.docs[0].data();
+        setSensorData({
+          temperature: data.temperature || 0,
+          humidity: data.humidity || 0
+        });
+        console.log("🔥 Dữ liệu mới từ Firebase:", data);
+      }
+    });
+
+    return () => unsubscribe(); // Hủy lắng nghe khi thoát trang
+  }, []);
+
+
+  // 5. HÀM GỬI LỆNH ĐIỀU KHIỂN 
+  const handleDeviceControl = async (device: string, currentState: boolean, setter: (val: boolean) => void) => {
+    const newState = !currentState;
+    setter(newState); // Cập nhật UI ngay lập tức
+
+    try {
+      await addDoc(collection(db, "commands"), {
+        device: device,
+        status: newState ? "on" : "off",
+        timestamp: serverTimestamp()
+      });
+      console.log(`Đã gửi lệnh ${newState ? 'BẬT' : 'TẮT'} cho ${device}`);
+    } catch (error) {
+      console.error("Lỗi gửi lệnh:", error);
+      setter(currentState); // Trả lại trạng thái cũ nếu lỗi
+    }
+  };
+
+
+
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -36,7 +85,7 @@ export function HomeDashboard() {
             <span className="text-sm text-muted-foreground">{t('home.temperature')}</span>
           </div>
           <div className="space-y-1">
-            <div className="text-4xl">{temperature}°C</div>
+            <div className="text-4xl">{sensorData.temperature}°C</div>
             <p className="text-xs text-muted-foreground">{t('home.updatedNow')}</p>
           </div>
         </motion.div>
@@ -54,7 +103,7 @@ export function HomeDashboard() {
             <span className="text-sm text-muted-foreground">{t('home.humidity')}</span>
           </div>
           <div className="space-y-1">
-            <div className="text-4xl">{humidity}%</div>
+            <div className="text-4xl">{sensorData.humidity}%</div>
             <p className="text-xs text-muted-foreground">{t('home.updatedNow')}</p>
           </div>
         </motion.div>
@@ -124,7 +173,7 @@ export function HomeDashboard() {
                   <p className="text-sm text-muted-foreground">{lightOn ? t('home.on') : t('home.off')}</p>
                 </div>
               </div>
-              <Switch checked={lightOn} onCheckedChange={setLightOn} />
+              <Switch checked={lightOn} onCheckedChange={() => handleDeviceControl('light', lightOn, setLightOn)} />
             </div>
           </motion.div>
 
@@ -144,7 +193,7 @@ export function HomeDashboard() {
                   <p className="text-sm text-muted-foreground">{fanOn ? t('home.on') : t('home.off')}</p>
                 </div>
               </div>
-              <Switch checked={fanOn} onCheckedChange={setFanOn} />
+              <Switch checked={fanOn} onCheckedChange={() => handleDeviceControl('fan', fanOn, setFanOn)} />
             </div>
           </motion.div>
         </div>
