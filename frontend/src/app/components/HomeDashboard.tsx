@@ -17,15 +17,16 @@ export function HomeDashboard() {
   const [fanOn, setFanOn] = useState(false);
   const [doorOpen, setDoorOpen] = useState(false);
 
+  // LẮNG NGHE DỮ LIỆU MỚI TỪ FIREBASE
   useEffect(() => {
-    // 1. Tạo câu truy vấn: Vào bảng 'sensor_data', sắp xếp thời gian giảm dần, lấy 1 cái mới nhất
+    // Tạo câu truy vấn: Vào bảng 'sensor_data', sắp xếp thời gian giảm dần, lấy 1 cái mới nhất
     const q = query(
       collection(db, "sensor_data"), 
       orderBy("timestamp", "desc"), 
       limit(1)
     );
 
-    // 2. Lắng nghe thay đổi (onSnapshot)
+    // Lắng nghe thay đổi (onSnapshot)
     const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         const data = snapshot.docs[0].data();
@@ -33,34 +34,53 @@ export function HomeDashboard() {
           temperature: data.temperature || 0,
           humidity: data.humidity || 0
         });
-        console.log("🔥 Dữ liệu mới từ Firebase:", data);
+        console.log("Dữ liệu mới từ Firebase:", data);
       }
     });
 
     return () => unsubscribe(); // Hủy lắng nghe khi thoát trang
   }, []);
 
+  // Lắng nghe trạng thái thiết bị (Đèn, Quạt, Cửa) từ Firebase
+useEffect(() => {
+  const q = query(
+    collection(db, "commands"),
+    orderBy("timestamp", "desc"),
+    limit(1) // Chỉ lấy đúng 1 lệnh mới nhất thôi
+  );
 
-  // 5. HÀM GỬI LỆNH ĐIỀU KHIỂN 
-  const handleDeviceControl = async (device: string, currentState: boolean, setter: (val: boolean) => void) => {
-    const newState = !currentState;
-    setter(newState); // Cập nhật UI ngay lập tức
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    if (!snapshot.empty) {
+      const data = snapshot.docs[0].data();
+      const isOn = data.status === "on";
 
-    try {
-      await addDoc(collection(db, "commands"), {
-        device: device,
-        status: newState ? "on" : "off",
-        timestamp: serverTimestamp()
-      });
-      console.log(`Đã gửi lệnh ${newState ? 'BẬT' : 'TẮT'} cho ${device}`);
-    } catch (error) {
-      console.error("Lỗi gửi lệnh:", error);
-      setter(currentState); // Trả lại trạng thái cũ nếu lỗi
+      // Chỉ cập nhật nếu timestamp của Firebase đã tồn tại (tránh lag do local cache)
+      if (data.timestamp) {
+        if (data.device === "light") setLightOn(isOn);
+        if (data.device === "fan") setFanOn(isOn);
+        if (data.device === "door") setDoorOpen(isOn);
+      }
     }
-  };
+  });
 
+  return () => unsubscribe();
+}, []);
 
-
+  // HÀM GỬI LỆNH ĐIỀU KHIỂN 
+  const handleDeviceControl = async (device: string, currentState: boolean, setter: (val: boolean) => void) => {
+  const newState = !currentState;
+  // setter(newState); 
+  try {
+    await addDoc(collection(db, "commands"), {
+      device: device,
+      status: newState ? "on" : "off",
+      timestamp: serverTimestamp() 
+    });
+  } catch (error) {
+    console.error("Lỗi gửi lệnh:", error);
+    setter(currentState); 
+  }
+};
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -226,7 +246,7 @@ export function HomeDashboard() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setDoorOpen(!doorOpen)}
+                  onClick={() => handleDeviceControl('door', doorOpen, setDoorOpen)}
                   className="px-6 py-2 bg-accent hover:bg-accent/80 rounded-lg transition-colors text-sm"
                 >
                   {t('home.toggle')}

@@ -28,7 +28,7 @@ const sendTestData = async () => {
   }
 };
 
-// Tự động gửi sau mỗi 5 giây
-setInterval(sendTestData, 5000);
+// Tự động gửi sau mỗi 10 giây
+setInterval(sendTestData, 10000);
 
-console.log("Đang gửi dữ liệu giả lập mỗi 5 giây... Hãy mở Firebase Console để xem.");
+console.log("Đang gửi dữ liệu giả lập mỗi 10 giây... Hãy mở Firebase Console để xem.");
