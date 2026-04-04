@@ -1,86 +1,14 @@
-import { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { Thermometer, Droplets, Lightbulb, Fan, DoorOpen, DoorClosed } from 'lucide-react';
 import { Switch } from './ui/switch';
-import { motion } from 'motion/react';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useSmartHome } from '../hooks/useSmartHome'; 
 
-// firebase imports
-import { db } from '../../firebase'; 
-import { collection, query, orderBy, limit, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 export function HomeDashboard() {
   const { t } = useLanguage();
 
-  // State for sensor data and device statuses
-  const [sensorData, setSensorData] = useState({ temperature: 0, humidity: 0 });
-  // Device states (in a real app, these would also come from Firebase)
-  const [lightOn, setLightOn] = useState(false);
-  const [fanOn, setFanOn] = useState(false);
-  const [doorOpen, setDoorOpen] = useState(false);
-
-  // LẮNG NGHE DỮ LIỆU MỚI TỪ FIREBASE
-  useEffect(() => {
-    // Tạo câu truy vấn: Vào bảng 'sensor_data', sắp xếp thời gian giảm dần, lấy 1 cái mới nhất
-    const q = query(
-      collection(db, "sensor_data"), 
-      orderBy("timestamp", "desc"), 
-      limit(1)
-    );
-
-    // Lắng nghe thay đổi (onSnapshot)
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
-        setSensorData({
-          temperature: data.temperature || 0,
-          humidity: data.humidity || 0
-        });
-        console.log("Dữ liệu mới từ Firebase:", data);
-      }
-    });
-
-    return () => unsubscribe(); // Hủy lắng nghe khi thoát trang
-  }, []);
-
-  // Lắng nghe trạng thái thiết bị (Đèn, Quạt, Cửa) từ Firebase
-useEffect(() => {
-  const q = query(
-    collection(db, "commands"),
-    orderBy("timestamp", "desc"),
-    limit(1) // Chỉ lấy đúng 1 lệnh mới nhất thôi
-  );
-
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    if (!snapshot.empty) {
-      const data = snapshot.docs[0].data();
-      const isOn = data.status === "on";
-
-      // Chỉ cập nhật nếu timestamp của Firebase đã tồn tại (tránh lag do local cache)
-      if (data.timestamp) {
-        if (data.device === "light") setLightOn(isOn);
-        if (data.device === "fan") setFanOn(isOn);
-        if (data.device === "door") setDoorOpen(isOn);
-      }
-    }
-  });
-
-  return () => unsubscribe();
-}, []);
-
-  // HÀM GỬI LỆNH ĐIỀU KHIỂN 
-  const handleDeviceControl = async (device: string, currentState: boolean, setter: (val: boolean) => void) => {
-  const newState = !currentState;
-  // setter(newState); 
-  try {
-    await addDoc(collection(db, "commands"), {
-      device: device,
-      status: newState ? "on" : "off",
-      timestamp: serverTimestamp() 
-    });
-  } catch (error) {
-    console.error("Lỗi gửi lệnh:", error);
-    setter(currentState); 
-  }
-};
+  // call hook to get all smart home data and control function
+  const { sensorData, lightOn, fanOn, doorOpen, handleDeviceControl } = useSmartHome();
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -173,7 +101,6 @@ useEffect(() => {
 
       {/* Quick Controls Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Quick Controls */}
         <div className="space-y-4">
           <h2 className="text-2xl mb-4">{t('home.quickControls')}</h2>
           
@@ -193,7 +120,7 @@ useEffect(() => {
                   <p className="text-sm text-muted-foreground">{lightOn ? t('home.on') : t('home.off')}</p>
                 </div>
               </div>
-              <Switch checked={lightOn} onCheckedChange={() => handleDeviceControl('light', lightOn, setLightOn)} />
+              <Switch checked={lightOn} onCheckedChange={() => handleDeviceControl('light', lightOn)} />
             </div>
           </motion.div>
 
@@ -213,7 +140,7 @@ useEffect(() => {
                   <p className="text-sm text-muted-foreground">{fanOn ? t('home.on') : t('home.off')}</p>
                 </div>
               </div>
-              <Switch checked={fanOn} onCheckedChange={() => handleDeviceControl('fan', fanOn, setFanOn)} />
+              <Switch checked={fanOn} onCheckedChange={() => handleDeviceControl('fan', fanOn)} />
             </div>
           </motion.div>
         </div>
@@ -221,7 +148,6 @@ useEffect(() => {
         {/* Door Status */}
         <div className="space-y-4">
           <h2 className="text-2xl mb-4">{t('home.security')}</h2>
-          
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -245,8 +171,9 @@ useEffect(() => {
                     </p>
                   </div>
                 </div>
+                {/* 3. SỬA ONCLICK CHO CỬA */}
                 <button
-                  onClick={() => handleDeviceControl('door', doorOpen, setDoorOpen)}
+                  onClick={() => handleDeviceControl('door', doorOpen)}
                   className="px-6 py-2 bg-accent hover:bg-accent/80 rounded-lg transition-colors text-sm"
                 >
                   {t('home.toggle')}
