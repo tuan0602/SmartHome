@@ -6,26 +6,25 @@ admin.initializeApp({
 });
 
 const db = admin.firestore();
-console.log("Firebase Admin đã sẵn sàng!");
+console.log("🚀 Firebase Admin đã sẵn sàng!");
 
-// Biến lưu trữ cấu hình từ Web (Manual/Auto và Ngưỡng nhiệt độ)
+// Cấu hình mặc định 
 let currentSettings = {
   fanMode: 'manual',
   tempThreshold: 30,
-  lightMode: 'manual'
+  lightMode: 'manual',
+  lightSchedule: { on: "18:00", off: "06:00" }
 };
 
 // --- LẮNG NGHE CẤU HÌNH (SETTINGS) ---
-// Đồng bộ chế độ Auto/Manual từ trang DevicesControl
 db.collection('settings').doc('devices').onSnapshot(doc => {
   if (doc.exists) {
     currentSettings = doc.data();
-    console.log("⚙️ Cấu hình hệ thống:", currentSettings);
+    console.log("⚙️ Đã cập nhật cấu hình hệ thống");
   }
 }, err => console.error("Lỗi nghe settings:", err));
 
-// ---LẮNG NGHE LỆNH ĐIỀU KHIỂN (COMMANDS) ---
-// Dùng để thực thi khi bạn bấm nút trên Web (Manual Mode)
+// --- LẮNG NGHE LỆNH THỦ CÔNG (COMMANDS) ---
 db.collection('commands')
   .orderBy('timestamp', 'desc')
   .limit(1)
@@ -33,25 +32,32 @@ db.collection('commands')
     snapshot.docChanges().forEach(change => {
       if (change.type === 'added') {
         const cmd = change.doc.data();
-        
-        // Chỉ thực hiện lệnh thủ công nếu thiết bị đó đang ở chế độ MANUAL
         const deviceMode = cmd.device === 'fan' ? currentSettings.fanMode : currentSettings.lightMode;
         
         if (deviceMode === 'manual') {
-          console.log(`🎮 [MANUAL] Thực thi lệnh: ${cmd.status.toUpperCase()} cho ${cmd.device}`);
-          //  chỗ này sẽ gửi lệnh qua MQTT hoặc Serial cho mạch thật
+          console.log(`🎮 [MANUAL] Thực thi: ${cmd.status.toUpperCase()} cho ${cmd.device}`);
         }
       }
     });
   });
 
-// --- HÀM GIẢ LẬP CẢM BIẾN & LOGIC TỰ ĐỘNG ---
+// --- HÀM KIỂM TRA THỜI GIAN HẸN GIỜ (Dùng cho đèn) ---
+const checkSchedule = (nowStr, onTime, offTime) => {
+  if (onTime < offTime) {
+    return nowStr >= onTime && nowStr < offTime;
+  } else {
+    // Trường hợp hẹn xuyên đêm (ví dụ: 18:00 tối đến 06:00 sáng)
+    return nowStr >= onTime || nowStr < offTime;
+  }
+};
+
+// ---HÀM GIẢ LẬP & LOGIC TỰ ĐỘNG ---
 const runSystemLoop = async () => {
   try {
-    const temp = Math.floor(Math.random() * 10) + 25; // 25-35 độ
+    const temp = Math.floor(Math.random() * 10) + 25;
     const hum = Math.floor(Math.random() * 20) + 60;
 
-    // Gửi dữ liệu cảm biến lên Web
+    //Gửi dữ liệu cảm biến
     await db.collection('sensor_data').add({
       temperature: temp,
       humidity: hum,
@@ -59,19 +65,35 @@ const runSystemLoop = async () => {
     });
     console.log(`🌡️ Cảm biến: ${temp}°C | ${hum}%`);
 
-    // LOGIC TỰ ĐỘNG CHO QUẠT (AUTO MODE)
+    //LOGIC AUTO CHO QUẠT (Theo nhiệt độ)
     if (currentSettings.fanMode === 'auto') {
       const shouldBeOn = temp > currentSettings.tempThreshold;
-      
-      // Ghi lệnh vào Firebase để Web tự cập nhật trạng thái nút bấm (Đồng bộ UI)
       await db.collection('commands').add({
         device: 'fan',
         status: shouldBeOn ? 'on' : 'off',
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        note: "Auto-controlled by Backend"
+        note: "Auto-controlled by Temp"
       });
-      
-      console.log(`[AUTO] Nhiệt độ ${temp} > Ngưỡng ${currentSettings.tempThreshold} => Quạt: ${shouldBeOn ? 'BẬT' : 'TẮT'}`);
+      console.log(`[AUTO FAN] Trạng thái: ${shouldBeOn ? 'BẬT' : 'TẮT'}`);
+    }
+
+    // C. LOGIC AUTO CHO ĐÈN (Theo hẹn giờ)
+    if (currentSettings.lightMode === 'auto' && currentSettings.lightSchedule) {
+      const now = new Date();
+      // Định dạng HH:mm (Ví dụ: 19:05)
+      const currentTimeStr = now.getHours().toString().padStart(2, '0') + ":" + 
+                             now.getMinutes().toString().padStart(2, '0');
+
+      const { on, off } = currentSettings.lightSchedule;
+      const shouldLightOn = checkSchedule(currentTimeStr, on, off);
+
+      await db.collection('commands').add({
+        device: 'light',
+        status: shouldLightOn ? 'on' : 'off',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        note: `Schedule check at ${currentTimeStr}`
+      });
+      console.log(`[SCHEDULE LIGHT] Giờ: ${currentTimeStr} | Lịch: ${on}-${off} => Đèn: ${shouldLightOn ? 'BẬT' : 'TẮT'}`);
     }
 
   } catch (error) {
@@ -79,7 +101,5 @@ const runSystemLoop = async () => {
   }
 };
 
-// Chạy vòng lặp hệ thống mỗi 10 giây
 setInterval(runSystemLoop, 10000);
-
-console.log("Hệ thống đang chạy: Đợi lệnh từ Web và quét cảm biến mỗi 10s...");
+console.log("Hệ thống đang chạy...");

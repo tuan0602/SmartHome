@@ -19,7 +19,7 @@ export function DevicesControl() {
   const [lightMode, setLightMode] = useState<'manual' | 'auto'>('manual');
   const [fanMode, setFanMode] = useState<'manual' | 'auto'>('manual');
   const [tempThreshold, setTempThreshold] = useState([30]);
-
+  const [lightSchedule, setLightSchedule] = useState({ on: "18:00", off: "06:00" });
   //LẮNG NGHE SETTINGS TỪ FIREBASE (Đồng bộ chế độ Auto/Manual giữa các thiết bị)
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "settings", "devices"), (snapshot) => {
@@ -28,6 +28,7 @@ export function DevicesControl() {
         if (data.lightMode) setLightMode(data.lightMode);
         if (data.fanMode) setFanMode(data.fanMode);
         if (data.tempThreshold !== undefined) setTempThreshold([data.tempThreshold]);
+        if (data.lightSchedule) setLightSchedule(data.lightSchedule);
       }
     });
     return () => unsub();
@@ -91,9 +92,53 @@ export function DevicesControl() {
                 </button>
               </div>
             </div>
+                        {lightMode === 'auto' && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }} 
+                animate={{ opacity: 1, height: 'auto' }} 
+                className="space-y-4 pt-4"
+              >
+                <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground font-medium uppercase">
+                      {t('devices.onTime') || 'Bật lúc'}
+                    </label>
+                    <input 
+                      type="time" 
+                      value={lightSchedule.on}
+                      onChange={(e) => {
+                        const newSched = { ...lightSchedule, on: e.target.value };
+                        setLightSchedule(newSched);
+                        updateSettings({ lightSchedule: newSched });
+                      }}
+                      className="w-full bg-accent text-accent-foreground p-2 rounded-lg border-none focus:ring-2 focus:ring-[#38BDF8] outline-none transition-all cursor-pointer"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs text-muted-foreground font-medium uppercase">
+                      {t('devices.offTime') || 'Tắt lúc'}
+                    </label>
+                    <input 
+                      type="time" 
+                      value={lightSchedule.off}
+                      onChange={(e) => {
+                        const newSched = { ...lightSchedule, off: e.target.value };
+                        setLightSchedule(newSched);
+                        updateSettings({ lightSchedule: newSched });
+                      }}
+                      className="w-full bg-accent text-accent-foreground p-2 rounded-lg border-none focus:ring-2 focus:ring-[#38BDF8] outline-none transition-all cursor-pointer"
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground italic flex items-center gap-2">
+                  ⏰ {t('devices.scheduleDesc') || `Đèn sẽ tự động hoạt động từ ${lightSchedule.on} đến ${lightSchedule.off}`}
+                </p>
+              </motion.div>
+            )}
           </motion.div>
+          
         </div>
-
+        
         {/* Fan Section */}
         <div className="space-y-4">
           <h2 className="text-2xl">{t('devices.fan')}</h2>
