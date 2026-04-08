@@ -92,17 +92,23 @@ export function DevicesControl() {
                 </button>
               </div>
             </div>
-                        {lightMode === 'auto' && (
+            {lightMode === 'auto' && (
               <motion.div 
-                initial={{ opacity: 0, height: 0 }} 
-                animate={{ opacity: 1, height: 'auto' }} 
-                className="space-y-4 pt-4"
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                className="space-y-4 pt-4 border-t border-border/50"
               >
-                <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-medium uppercase">
-                      {t('devices.onTime') || 'Bật lúc'}
-                    </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Cửa sổ bật lúc */}
+                  <div className="relative group bg-accent/30 p-4 rounded-2xl border border-transparent hover:border-[#FACC15]/50 transition-all">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-[#FACC15]/20 rounded-lg">
+                        <span className="text-xs font-bold text-[#FACC15]">ON</span>
+                      </div>
+                      <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {t('devices.onTime')}
+                      </label>
+                    </div>
                     <input 
                       type="time" 
                       value={lightSchedule.on}
@@ -111,13 +117,20 @@ export function DevicesControl() {
                         setLightSchedule(newSched);
                         updateSettings({ lightSchedule: newSched });
                       }}
-                      className="w-full bg-accent text-accent-foreground p-2 rounded-lg border-none focus:ring-2 focus:ring-[#38BDF8] outline-none transition-all cursor-pointer"
+                      className="w-full bg-transparent text-2xl font-medium outline-none cursor-pointer [color-scheme:dark]"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-xs text-muted-foreground font-medium uppercase">
-                      {t('devices.offTime') || 'Tắt lúc'}
-                    </label>
+
+                  {/* Cửa sổ tắt lúc */}
+                  <div className="relative group bg-accent/30 p-4 rounded-2xl border border-transparent hover:border-[#38BDF8]/50 transition-all">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-[#38BDF8]/20 rounded-lg">
+                        <span className="text-xs font-bold text-[#38BDF8]">OFF</span>
+                      </div>
+                      <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        {t('devices.offTime')}
+                      </label>
+                    </div>
                     <input 
                       type="time" 
                       value={lightSchedule.off}
@@ -126,13 +139,21 @@ export function DevicesControl() {
                         setLightSchedule(newSched);
                         updateSettings({ lightSchedule: newSched });
                       }}
-                      className="w-full bg-accent text-accent-foreground p-2 rounded-lg border-none focus:ring-2 focus:ring-[#38BDF8] outline-none transition-all cursor-pointer"
+                      className="w-full bg-transparent text-2xl font-medium outline-none cursor-pointer [color-scheme:dark]"
                     />
                   </div>
                 </div>
-                <p className="text-sm text-muted-foreground italic flex items-center gap-2">
-                  ⏰ {t('devices.scheduleDesc') || `Đèn sẽ tự động hoạt động từ ${lightSchedule.on} đến ${lightSchedule.off}`}
-                </p>
+
+                {/* Thông báo trạng thái cực xịn */}
+                <div className="bg-blue-500/10 border border-blue-500/20 p-3 rounded-xl flex items-center gap-3">
+                  <div className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                  </div>
+                  <p className="text-xs text-blue-400 font-medium">
+                    {t('devices.scheduleActive')} {lightSchedule.on} — {lightSchedule.off}
+                  </p>
+                </div>
               </motion.div>
             )}
           </motion.div>

@@ -22,18 +22,37 @@ export function useSmartHome() {
 
   // 2. Lắng nghe trạng thái thiết bị để đồng bộ
   useEffect(() => {
-    const q = query(collection(db, "commands"), orderBy("timestamp", "desc"), limit(1));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        const data = snapshot.docs[0].data();
+  // Lấy 10 cái gần nhất để đảm bảo không sót lệnh của thiết bị nào
+  const q = query(collection(db, "commands"), orderBy("timestamp", "desc"), limit(10));
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    if (!snapshot.empty) {
+      // Dùng object để đánh dấu đã cập nhật thiết bị đó chưa
+      const updated = { light: false, fan: false, door: false };
+
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
         const isOn = data.status === "on";
-        if (data.device === "light") setLightOn(isOn);
-        if (data.device === "fan") setFanOn(isOn);
-        if (data.device === "door") setDoorOpen(isOn);
-      }
-    });
-    return () => unsubscribe();
-  }, []);
+
+        // Chỉ cập nhật cái MỚI NHẤT cho mỗi loại thiết bị
+        if (data.device === "light" && !updated.light) {
+          setLightOn(isOn);
+          updated.light = true;
+        }
+        if (data.device === "fan" && !updated.fan) {
+          setFanOn(isOn);
+          updated.fan = true;
+        }
+        if (data.device === "door" && !updated.door) {
+          setDoorOpen(isOn);
+          updated.door = true;
+        }
+      });
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
 
   // 3. Hàm điều khiển chung
   const handleDeviceControl = async (device: string, currentState: boolean) => {
