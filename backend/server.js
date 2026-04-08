@@ -16,7 +16,7 @@ let currentSettings = {
   lightSchedule: { on: "18:00", off: "06:00" }
 };
 
-// --- KHỞI TẠO DOCUMENT POMODORO  ---
+// --- KHỞI TẠO DOCUMENT POMODORO ---
 const initPomodoro = async () => {
   const pomoRef = db.collection('settings').doc('pomodoro');
   const doc = await pomoRef.get();
@@ -40,50 +40,45 @@ db.collection('settings').doc('devices').onSnapshot(doc => {
   }
 }, err => console.error("Lỗi nghe settings:", err));
 
-// --- LẮNG NGHE TRẠNG THÁI POMODORO THỜI GIAN THỰC ---
-// Kênh này dùng để đồng bộ trạng thái học tập xuyên suốt hệ thống
+// --- LẮNG NGHE POMODORO (Giữ nguyên vì đã tách khỏi Commands) ---
 db.collection('settings').doc('pomodoro').onSnapshot(doc => {
   if (doc.exists) {
     const data = doc.data();
-    
     if (data.isRunning && data.endTime) {
       const now = Date.now();
       const remaining = data.endTime - now;
-
       if (remaining > 0) {
-        const statusType = data.type.toUpperCase();
-        console.log(`⏳ [POMODORO] ${statusType === 'FOCUS' ? '🔴 ĐANG HỌC' : '🟢 ĐANG NGHỈ'}. Còn lại: ${Math.floor(remaining/1000)}s`);
-        
-        // Logic gửi lệnh cho phần cứng sau này:
-        // const color = statusType === 'FOCUS' ? 'RED' : 'GREEN';
-        // mqttClient.publish('your_feed/led-rgb', color);
-      } else {
-        console.log("🔔 [POMODORO] Hết giờ! Chờ phiên tiếp theo...");
+        console.log(`⏳ [POMODORO] ${data.type.toUpperCase()} - Còn lại: ${Math.floor(remaining/1000)}s`);
       }
-    } else {
-      console.log("🛑 [POMODORO] Đang dừng.");
     }
   }
 }, err => console.error("Lỗi nghe Pomodoro:", err));
 
-// --- LẮNG NGHE LỆNH THỦ CÔNG (COMMANDS) ---
-// Chỉ dành cho việc điều khiển trực tiếp Quạt và Đèn
-db.collection('commands')
+// --- 4a. LẮNG NGHE LỆNH QUẠT (FAN_COMMANDS) ---
+db.collection('fan_commands')
   .orderBy('timestamp', 'desc')
   .limit(1)
   .onSnapshot(snapshot => {
     snapshot.docChanges().forEach(change => {
       if (change.type === 'added') {
         const cmd = change.doc.data();
+        if (currentSettings.fanMode === 'manual') {
+          console.log(`🌀 [FAN MANUAL] Thực thi: ${cmd.status.toUpperCase()}`);
+        }
+      }
+    });
+  });
 
-        // Chỉ xử lý các thiết bị thủ công (Fan, Light)
-        if (cmd.device === 'fan' || cmd.device === 'light') {
-          const deviceMode = cmd.device === 'fan' ? currentSettings.fanMode : currentSettings.lightMode;
-          
-          if (deviceMode === 'manual') {
-            console.log(`🎮 [MANUAL] Thực thi: ${cmd.status.toUpperCase()} cho ${cmd.device}`);
-            // mqttClient.publish(`feeds/${cmd.device}`, cmd.status.toUpperCase());
-          }
+// --- 4b. LẮNG NGHE LỆNH ĐÈN (LIGHT_COMMANDS) ---
+db.collection('light_commands')
+  .orderBy('timestamp', 'desc')
+  .limit(1)
+  .onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      if (change.type === 'added') {
+        const cmd = change.doc.data();
+        if (currentSettings.lightMode === 'manual') {
+          console.log(`💡 [LIGHT MANUAL] Thực thi: ${cmd.status.toUpperCase()}`);
         }
       }
     });
@@ -91,61 +86,67 @@ db.collection('commands')
 
 // --- 5. CÁC HÀM HỖ TRỢ LOGIC TỰ ĐỘNG ---
 const checkSchedule = (nowStr, onTime, offTime) => {
-  if (onTime < offTime) {
-    return nowStr >= onTime && nowStr < offTime;
-  } else {
-    return nowStr >= onTime || nowStr < offTime;
-  }
+  if (onTime < offTime) return nowStr >= onTime && nowStr < offTime;
+  return nowStr >= onTime || nowStr < offTime;
 };
 
+let logCounter = 0;
 const runSystemLoop = async () => {
   try {
     const temp = Math.floor(Math.random() * 10) + 25;
     const hum = Math.floor(Math.random() * 20) + 60;
 
-    // Gửi dữ liệu cảm biến giả lập lên Firebase
-    await db.collection('sensor_data').add({
+    await db.collection('sensor_data').doc('current').set({
       temperature: temp,
       humidity: hum,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
-    console.log(`🌡️ Sensor Update: ${temp}°C | ${hum}%`);
 
-    // LOGIC TỰ ĐỘNG CHO QUẠT
-    if (currentSettings.fanMode === 'auto') {
-      const shouldBeOn = temp > currentSettings.tempThreshold;
-      await db.collection('commands').add({
-        device: 'fan',
-        status: shouldBeOn ? 'on' : 'off',
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        note: "Auto-controlled by Temp"
+    // GHI LỊCH SỬ (Logs) - Cứ mỗi 6 lần chạy (60 giây) mới ghi 1 bản ghi vào lịch sử
+    logCounter++;
+    if (logCounter >= 6) {
+      await db.collection('sensor_logs').add({
+        temperature: temp,
+        humidity: hum,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`[AUTO FAN] Logic: ${temp}°C > ${currentSettings.tempThreshold}°C => ${shouldBeOn ? 'ON' : 'OFF'}`);
+      console.log(`📊 [LOG] Đã lưu lịch sử cảm biến vào sensor_logs`);
+      logCounter = 0; // Reset bộ đếm
     }
 
-    // LOGIC TỰ ĐỘNG CHO ĐÈN
+    console.log(`🌡️ Sensor Update: ${temp}°C | ${hum}%`);
+
+    // LOGIC AUTO CHO QUẠT -> Ghi vào fan_commands
+    if (currentSettings.fanMode === 'auto') {
+      const shouldBeOn = temp > currentSettings.tempThreshold;
+      await db.collection('fan_commands').add({
+        status: shouldBeOn ? 'on' : 'off',
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        note: "Auto by Temp"
+      });
+      console.log(`[AUTO FAN] -> ${shouldBeOn ? 'ON' : 'OFF'}`);
+    }
+
+    // LOGIC AUTO CHO ĐÈN -> Ghi vào light_commands
     if (currentSettings.lightMode === 'auto' && currentSettings.lightSchedule) {
       const now = new Date();
       const currentTimeStr = now.getHours().toString().padStart(2, '0') + ":" + 
                              now.getMinutes().toString().padStart(2, '0');
-
       const { on, off } = currentSettings.lightSchedule;
       const shouldLightOn = checkSchedule(currentTimeStr, on, off);
 
-      await db.collection('commands').add({
-        device: 'light',
+      await db.collection('light_commands').add({
         status: shouldLightOn ? 'on' : 'off',
         timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        note: `Schedule check at ${currentTimeStr}`
+        note: "Auto by Schedule"
       });
-      console.log(`[AUTO LIGHT] Giờ: ${currentTimeStr} | Schedule: ${on}-${off} => ${shouldLightOn ? 'ON' : 'OFF'}`);
+      console.log(`[AUTO LIGHT] -> ${shouldLightOn ? 'ON' : 'OFF'}`);
     }
 
   } catch (error) {
-    console.error("❌ Lỗi trong System Loop:", error);
+    console.error("❌ Lỗi System Loop:", error);
   }
 };
 
-// --- CHẠY HỆ THỐNG ---
-setInterval(runSystemLoop, 10000); // Cập nhật cảm biến và auto logic mỗi 10 giây
-console.log("🌟 Hệ thống Smart Home Backend đang vận hành...");
+setInterval(runSystemLoop, 10000);
+console.log("🌟 Backend đã tách biệt fan_commands và light_commands!");

@@ -151,6 +151,14 @@ useEffect(() => {
   const remainingSeconds = minutes * 60 + seconds;
   const progress = currentTotalSeconds > 0 ? ((currentTotalSeconds - remainingSeconds) / currentTotalSeconds) * 100 : 0;
 
+  // --- THỐNG KÊ MỤC TIÊU ---
+  const dailyGoal = 8;
+  const goalPercentage = Math.round((completedSessions / dailyGoal) * 100);
+  // Thanh bar vật lý không được vượt quá 100% để tránh tràn giao diện
+  const barWidth = Math.min(goalPercentage, 100); 
+  const isGoalReached = completedSessions >= dailyGoal;
+
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-12">
       {/* Header */}
@@ -197,28 +205,51 @@ useEffect(() => {
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground">Tập trung</label>
                 <input 
-                  type="number" value={workDuration}
+                  type="number" 
+                  value={workDuration === 0 ? '' : workDuration}
                   onChange={(e) => {
-                    const v = Math.max(1, parseInt(e.target.value) || 1);
-                    setWorkDuration(v);
-                    localStorage.setItem('pomo_work_dur', v.toString());
-                    if (!isActive && !isBreak) setMinutes(v);
+                    const val = e.target.value;
+                    if (val === "") {
+                      setWorkDuration(0);
+                      return;
+                    }
+                    const num = parseInt(val);
+                    if (!isNaN(num)) {
+                      setWorkDuration(num);
+                      if (num > 0) {
+                        localStorage.setItem('pomo_work_dur', num.toString());
+                        if (!isActive && !isBreak) setMinutes(num);
+                      }
+                    }
                   }}
+                  onFocus={(e) => e.target.select()}
                   className="w-full bg-accent/50 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#38BDF8]"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-semibold text-muted-foreground">Nghỉ ngơi</label>
                 <input 
-                  type="number" value={breakDuration}
-                  onChange={(e) => {
-                    const v = Math.max(1, parseInt(e.target.value) || 1);
-                    setBreakDuration(v);
-                    localStorage.setItem('pomo_break_dur', v.toString());
-                    if (!isActive && isBreak) setMinutes(v);
-                  }}
-                  className="w-full bg-accent/50 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]"
-                />
+                    type="number" 
+                    value={breakDuration === 0 ? '' : breakDuration}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "") {
+                        setBreakDuration(0);
+                        return;
+                      }
+
+                      const num = parseInt(val);
+                      if (!isNaN(num)) {
+                        setBreakDuration(num);
+                        if (num > 0) {
+                          localStorage.setItem('pomo_break_dur', num.toString());
+                          if (!isActive && isBreak) setMinutes(num);
+                        }
+                      }
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    className="w-full bg-accent/50 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]"
+                  />
               </div>
             </div>
 
@@ -241,31 +272,40 @@ useEffect(() => {
       </div>
 
       {/* --- PHẦN THỐNG KÊ  --- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12 border-t border-border/50">
-        <div className="bg-card/50 p-6 rounded-3xl border border-border flex items-center gap-4">
-          <div className="p-3 bg-[#38BDF8]/10 rounded-2xl text-[#38BDF8]"><Award /></div>
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase">Đã hoàn thành</p>
-            <p className="text-2xl font-bold">{completedSessions} Phiên</p>
+      {/* Mục tiêu ngày - Đã sửa theo cách 1 */}
+        <div className="bg-card/50 p-6 rounded-3xl border border-border flex flex-col justify-center px-8 space-y-3">
+          <div className="flex justify-between items-end">
+            <div>
+              <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Mục tiêu ngày</p>
+              <p className="text-sm font-semibold">
+                {completedSessions} <span className="text-muted-foreground">/ {dailyGoal} phiên</span>
+              </p>
+            </div>
+            {/* Hiển thị con số % thực tế (ví dụ 175%) và đổi màu khi đạt mục tiêu */}
+            <span className={`text-xl font-black transition-colors duration-500 ${isGoalReached ? 'text-green-500' : 'text-[#38BDF8]'}`}>
+              {goalPercentage}%
+            </span>
           </div>
-        </div>
-        <div className="bg-card/50 p-6 rounded-3xl border border-border flex items-center gap-4">
-          <div className="p-3 bg-green-500/10 rounded-2xl text-green-500"><div className="w-3 h-3 rounded-full bg-current animate-pulse" /></div>
-          <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase">Thiết bị Phần cứng</p>
-            <p className="text-sm font-medium">{isActive ? (isBreak ? 'LED: XANH LÁ' : 'LED: ĐỎ') : 'Sẵn sàng...'}</p>
+
+          <div className="h-3 bg-accent rounded-full overflow-hidden shadow-inner">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ 
+                width: `${barWidth}%`,
+                // Đổi màu thanh bar sang xanh lá khi đạt/vượt 100%
+                backgroundColor: isGoalReached ? '#22C55E' : '#38BDF8' 
+              }}
+              className="h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(56,189,248,0.3)]"
+            />
           </div>
+
+          {/* Dòng chữ khích lệ khi vượt chỉ tiêu */}
+          {isGoalReached && (
+            <p className="text-[10px] text-green-500 font-bold text-right">
+              ★ ĐÃ VƯỢT CHỈ TIÊU XUẤT SẮC!
+            </p>
+          )}
         </div>
-        <div className="bg-card/50 p-6 rounded-3xl border border-border flex flex-col justify-center px-8">
-           <div className="flex justify-between text-xs font-bold mb-2">
-             <span className="text-muted-foreground uppercase">Mục tiêu ngày</span>
-             <span>{Math.min(100, Math.round((completedSessions / 8) * 100))}%</span>
-           </div>
-           <div className="h-2 bg-accent rounded-full overflow-hidden">
-             <div className="h-full bg-[#38BDF8] transition-all duration-1000" style={{ width: `${(completedSessions / 8) * 100}%` }} />
-           </div>
-        </div>
-      </div>
     </div>
   );
 }
