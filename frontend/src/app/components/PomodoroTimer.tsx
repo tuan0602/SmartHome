@@ -1,26 +1,26 @@
 import { useState, useEffect } from 'react';
-import { Play, Pause, RotateCcw, Award, Settings2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Play, Pause, RotateCcw, Award, Settings2, Zap } from 'lucide-react';
+import { motion } from 'framer-motion'; 
 import { useLanguage } from '../contexts/LanguageContext';
 import { useSmartHome } from '../hooks/useSmartHome';
 import { db } from '../../firebase';
-import { doc, updateDoc, onSnapshot, setDoc, addDoc, collection, serverTimestamp, query, where, getCountFromServer } from "firebase/firestore";
+import { doc, updateDoc, onSnapshot, setDoc, addDoc, collection, serverTimestamp, query, where } from "firebase/firestore";
 
 export function PomodoroTimer() {
   const { t } = useLanguage();
   const { handleDeviceControl } = useSmartHome();
 
-  // --- KHỞI TẠO STATE  ---
+  // --- STATE ---
   const [workDuration, setWorkDuration] = useState(() => Number(localStorage.getItem('pomo_work_dur')) || 25);
   const [breakDuration, setBreakDuration] = useState(() => Number(localStorage.getItem('pomo_break_dur')) || 5);
-  
   const [minutes, setMinutes] = useState(workDuration);
   const [seconds, setSeconds] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [isBreak, setIsBreak] = useState(false);
   const [completedSessions, setCompletedSessions] = useState(0);
+  const [totalMinutes, setTotalMinutes] = useState(0);
 
-  // ---  ĐỒNG BỘ REALTIME TỪ FIREBASE ---
+  // --- FIREBASE SYNC (Realtime Timer) ---
   useEffect(() => {
     const pomoRef = doc(db, "settings", "pomodoro");
     const unsubscribe = onSnapshot(pomoRef, (snapshot) => {
@@ -29,7 +29,6 @@ export function PomodoroTimer() {
         if (data.isRunning && data.endTime) {
           const now = Date.now();
           const remainingTotal = Math.floor((data.endTime - now) / 1000);
-
           if (remainingTotal > 0) {
             setIsActive(true);
             setIsBreak(data.type === 'break');
@@ -46,29 +45,29 @@ export function PomodoroTimer() {
     return () => unsubscribe();
   }, []);
 
-useEffect(() => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // --- FIREBASE HISTORY (Sessions & Minutes) ---
+  useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-  const historyRef = collection(db, "pomodoro_history");
-  const q = query(
-    historyRef,
-    where("type", "==", "focus"),
-    where("timestamp", ">=", today)
-  );
+    const q = query(
+      collection(db, "pomodoro_history"),
+      where("type", "==", "focus"),
+      where("timestamp", ">=", today)
+    );
 
-  // Lắng nghe thay đổi Real-time
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    // Mỗi khi có thêm 1 document thỏa mãn điều kiện, số lượng sẽ được cập nhật
-    setCompletedSessions(snapshot.size); 
-  }, (error) => {
-    console.error("Lỗi lắng nghe lịch sử:", error);
-  });
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let totalMins = 0;
+      snapshot.docs.forEach(doc => {
+        totalMins += doc.data().duration || 0;
+      });
+      setCompletedSessions(snapshot.size);
+      setTotalMinutes(totalMins);
+    });
+    return () => unsubscribe();
+  }, []);
 
-  return () => unsubscribe();
-}, []); // Chỉ chạy 1 lần khi load trang để thiết lập bộ lắng nghe
-
-  // --- 3. LOGIC ĐẾM NGƯỢC TẠI CHỖ ---
+  // --- LOGIC COUNTDOWN ---
   useEffect(() => {
     let interval: number | undefined;
     if (isActive) {
@@ -88,22 +87,26 @@ useEffect(() => {
     return () => clearInterval(interval);
   }, [isActive, minutes, seconds]);
 
-  // ---  XỬ LÝ KHI HOÀN THÀNH PHIÊN ---
- const handleSessionComplete = async () => {
+const handleSessionComplete = async () => {
   setIsActive(false);
   const nextType = isBreak ? 'focus' : 'break';
   const nextDur = nextType === 'focus' ? workDuration : breakDuration;
 
-  if (!isBreak) {
-    // LƯU VÀO FIREBASE: Phải có timestamp server để lọc theo ngày
-    await addDoc(collection(db, "pomodoro_history"), {
-      type: 'focus',
-      duration: workDuration,
-      timestamp: serverTimestamp() // Sử dụng serverTimestamp() của Firebase
-    });
-    // Không cần setCompletedSessions thủ công ở đây nữa vì useEffect ở trên sẽ tự fetch lại khi isActive thành false
+  // CHỖ NÀY: Phải đảm bảo logic ghi vào Firebase không bị xóa mất
+  if (!isBreak) { // Chỉ lưu khi vừa kết thúc phiên 'focus'
+    try {
+      await addDoc(collection(db, "pomodoro_history"), {
+        type: 'focus',
+        duration: workDuration,
+        timestamp: serverTimestamp() // Sử dụng serverTimestamp để Firebase tự tạo giờ
+      });
+      console.log("✅ Đã lưu lịch sử phiên học thành công!");
+    } catch (error) {
+      console.error("❌ Lỗi khi ghi vào pomodoro_history:", error);
+    }
   }
 
+  // Cập nhật trạng thái timer trên Firebase để đồng bộ các thiết bị
   await updateDoc(doc(db, "settings", "pomodoro"), {
     isRunning: false,
     type: nextType,
@@ -114,7 +117,7 @@ useEffect(() => {
   setMinutes(nextDur);
   setSeconds(0);
 };
-  // ---CÁC HÀM ĐIỀU KHIỂN ---
+
   const handleStart = async () => {
     const pomoRef = doc(db, "settings", "pomodoro");
     const currentDur = minutes + (seconds / 60);
@@ -127,7 +130,6 @@ useEffect(() => {
       duration: isBreak ? breakDuration : workDuration
     }, { merge: true });
 
-    // Gửi lệnh phần cứng (Học: true/Đỏ, Nghỉ: false/Xanh)
     handleDeviceControl('pomodoro_status', !isBreak);
   };
 
@@ -146,18 +148,15 @@ useEffect(() => {
     handleDeviceControl('pomodoro_status', false);
   };
 
-  // ---  TÍNH TOÁN UI ---
+  // --- UI CALCULATIONS ---
   const currentTotalSeconds = (isBreak ? breakDuration : workDuration) * 60;
   const remainingSeconds = minutes * 60 + seconds;
   const progress = currentTotalSeconds > 0 ? ((currentTotalSeconds - remainingSeconds) / currentTotalSeconds) * 100 : 0;
 
-  // --- THỐNG KÊ MỤC TIÊU ---
   const dailyGoal = 8;
   const goalPercentage = Math.round((completedSessions / dailyGoal) * 100);
-  // Thanh bar vật lý không được vượt quá 100% để tránh tràn giao diện
   const barWidth = Math.min(goalPercentage, 100); 
   const isGoalReached = completedSessions >= dailyGoal;
-
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-12">
@@ -203,16 +202,13 @@ useEffect(() => {
             
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">Tập trung</label>
+                <label className="text-xs font-semibold text-muted-foreground">Focus</label>
                 <input 
                   type="number" 
                   value={workDuration === 0 ? '' : workDuration}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === "") {
-                      setWorkDuration(0);
-                      return;
-                    }
+                    if (val === "") { setWorkDuration(0); return; }
                     const num = parseInt(val);
                     if (!isNaN(num)) {
                       setWorkDuration(num);
@@ -227,29 +223,25 @@ useEffect(() => {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-semibold text-muted-foreground">Nghỉ ngơi</label>
+                <label className="text-xs font-semibold text-muted-foreground">Break</label>
                 <input 
-                    type="number" 
-                    value={breakDuration === 0 ? '' : breakDuration}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "") {
-                        setBreakDuration(0);
-                        return;
+                  type="number" 
+                  value={breakDuration === 0 ? '' : breakDuration}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "") { setBreakDuration(0); return; }
+                    const num = parseInt(val);
+                    if (!isNaN(num)) {
+                      setBreakDuration(num);
+                      if (num > 0) {
+                        localStorage.setItem('pomo_break_dur', num.toString());
+                        if (!isActive && isBreak) setMinutes(num);
                       }
-
-                      const num = parseInt(val);
-                      if (!isNaN(num)) {
-                        setBreakDuration(num);
-                        if (num > 0) {
-                          localStorage.setItem('pomo_break_dur', num.toString());
-                          if (!isActive && isBreak) setMinutes(num);
-                        }
-                      }
-                    }}
-                    onFocus={(e) => e.target.select()}
-                    className="w-full bg-accent/50 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]"
-                  />
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-full bg-accent/50 p-3 rounded-2xl outline-none focus:ring-2 focus:ring-[#FACC15]"
+                />
               </div>
             </div>
 
@@ -271,41 +263,66 @@ useEffect(() => {
         </div>
       </div>
 
-      {/* --- PHẦN THỐNG KÊ  --- */}
-      {/* Mục tiêu ngày - Đã sửa theo cách 1 */}
-        <div className="bg-card/50 p-6 rounded-3xl border border-border flex flex-col justify-center px-8 space-y-3">
+      {/* --- PHẦN THỐNG KÊ MỚI (3 CỘT) --- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12 border-t border-border/50">
+        
+        {/* Cột 1: Thành tích tổng quát */}
+        <div className="bg-card/50 p-6 rounded-3xl border border-border flex items-center gap-4">
+          <div className="p-3 bg-[#38BDF8]/10 rounded-2xl text-[#38BDF8]"><Award className="w-6 h-6" /></div>
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase">Today's Achievements</p>
+            <div className="flex items-baseline gap-2">
+              <p className="text-2xl font-bold">{completedSessions} sessions</p>
+              <p className="text-sm text-muted-foreground font-medium">({totalMinutes} minutes)</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Cột 2: Trạng thái IoT */}
+        <div className="bg-card/50 p-6 rounded-3xl border border-border flex items-center gap-4">
+          <div className={`p-3 rounded-2xl ${isActive ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
+            <Zap className={`w-6 h-6 ${isActive ? 'animate-pulse' : ''}`} />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-muted-foreground uppercase">Device Status</p>
+            <p className="text-sm font-semibold uppercase">
+              {isActive ? (isBreak ? '💡 LED: GREEN (BREAK)' : '🔴 LED: RED (FOCUS)') : '💤 Awaiting command...'}
+            </p>
+          </div>
+        </div>
+
+        {/* Cột 3: Mục tiêu ngày */}
+        <div className="bg-card/50 p-6 rounded-3xl border border-border flex flex-col justify-center space-y-3">
           <div className="flex justify-between items-end">
             <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Mục tiêu ngày</p>
+              <p className="text-xs font-bold text-muted-foreground uppercase mb-1">Progress toward goal</p>
               <p className="text-sm font-semibold">
-                {completedSessions} <span className="text-muted-foreground">/ {dailyGoal} phiên</span>
+                {completedSessions}/{dailyGoal} <span className="text-[10px] text-muted-foreground">SESSIONS</span>
               </p>
             </div>
-            {/* Hiển thị con số % thực tế (ví dụ 175%) và đổi màu khi đạt mục tiêu */}
-            <span className={`text-xl font-black transition-colors duration-500 ${isGoalReached ? 'text-green-500' : 'text-[#38BDF8]'}`}>
+            <span className={`text-xl font-black ${isGoalReached ? 'text-green-500' : 'text-[#38BDF8]'}`}>
               {goalPercentage}%
             </span>
           </div>
 
-          <div className="h-3 bg-accent rounded-full overflow-hidden shadow-inner">
+          <div className="h-2.5 bg-accent rounded-full overflow-hidden shadow-inner">
             <motion.div 
               initial={{ width: 0 }}
               animate={{ 
                 width: `${barWidth}%`,
-                // Đổi màu thanh bar sang xanh lá khi đạt/vượt 100%
                 backgroundColor: isGoalReached ? '#22C55E' : '#38BDF8' 
               }}
-              className="h-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(56,189,248,0.3)]"
+              className="h-full transition-all duration-1000 ease-out"
             />
           </div>
-
-          {/* Dòng chữ khích lệ khi vượt chỉ tiêu */}
+          
           {isGoalReached && (
-            <p className="text-[10px] text-green-500 font-bold text-right">
-              ★ ĐÃ VƯỢT CHỈ TIÊU XUẤT SẮC!
+            <p className="text-[10px] text-green-500 font-black text-right animate-bounce">
+              ★ GOAL REACHED! ★
             </p>
           )}
         </div>
+      </div>
     </div>
   );
 }

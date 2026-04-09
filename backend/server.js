@@ -40,21 +40,38 @@ db.collection('settings').doc('devices').onSnapshot(doc => {
   }
 }, err => console.error("Lỗi nghe settings:", err));
 
-// --- LẮNG NGHE POMODORO (Giữ nguyên vì đã tách khỏi Commands) ---
+// --- LẮNG NGHE POMODORO  ---
+let lastPomoSignal = null;
+
+// --- LẮNG NGHE POMODORO ---
 db.collection('settings').doc('pomodoro').onSnapshot(doc => {
   if (doc.exists) {
     const data = doc.data();
-    if (data.isRunning && data.endTime) {
-      const now = Date.now();
-      const remaining = data.endTime - now;
-      if (remaining > 0) {
-        console.log(`⏳ [POMODORO] ${data.type.toUpperCase()} - Còn lại: ${Math.floor(remaining/1000)}s`);
-      }
+    let currentSignal = 2; // Mặc định là 2 (TẮT/CHỜ)
+
+    if (data.isRunning && data.endTime && (data.endTime - Date.now() > 0)) {
+      currentSignal = (data.type === 'focus') ? 1 : 0; // 1: ĐỎ, 0: XANH
+    }
+
+    // CHỈ GỬI KHI CÓ THAY ĐỔI
+    if (currentSignal !== lastPomoSignal) {
+      console.log(`📡 [IoT POMODORO] Gửi tín hiệu mới: ${currentSignal}`);
+      
+      // hàm gửi đi IoT (MQTT/Serial)
+      // sendToIoT(currentSignal); 
+
+      lastPomoSignal = currentSignal;
+    }
+
+    //log  console
+    if (data.isRunning) {
+      const status = data.type.toUpperCase();
+      console.log(`⏳ [STATUS] ${status} | Duration: ${data.duration}m`);
     }
   }
 }, err => console.error("Lỗi nghe Pomodoro:", err));
 
-// --- 4a. LẮNG NGHE LỆNH QUẠT (FAN_COMMANDS) ---
+// --- LẮNG NGHE LỆNH QUẠT (FAN_COMMANDS) ---
 db.collection('fan_commands')
   .orderBy('timestamp', 'desc')
   .limit(1)
@@ -69,7 +86,7 @@ db.collection('fan_commands')
     });
   });
 
-// --- 4b. LẮNG NGHE LỆNH ĐÈN (LIGHT_COMMANDS) ---
+// --- LẮNG NGHE LỆNH ĐÈN (LIGHT_COMMANDS) ---
 db.collection('light_commands')
   .orderBy('timestamp', 'desc')
   .limit(1)
@@ -84,7 +101,7 @@ db.collection('light_commands')
     });
   });
 
-// --- 5. CÁC HÀM HỖ TRỢ LOGIC TỰ ĐỘNG ---
+// --- CÁC HÀM HỖ TRỢ LOGIC TỰ ĐỘNG ---
 const checkSchedule = (nowStr, onTime, offTime) => {
   if (onTime < offTime) return nowStr >= onTime && nowStr < offTime;
   return nowStr >= onTime || nowStr < offTime;
@@ -117,14 +134,23 @@ const runSystemLoop = async () => {
     console.log(`🌡️ Sensor Update: ${temp}°C | ${hum}%`);
 
     // LOGIC AUTO CHO QUẠT -> Ghi vào fan_commands
+    let lastAutoFanStatus = null;
+
+    // Trong runSystemLoop, phần Auto Fan:
     if (currentSettings.fanMode === 'auto') {
       const shouldBeOn = temp > currentSettings.tempThreshold;
-      await db.collection('fan_commands').add({
-        status: shouldBeOn ? 'on' : 'off',
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-        note: "Auto by Temp"
-      });
-      console.log(`[AUTO FAN] -> ${shouldBeOn ? 'ON' : 'OFF'}`);
+      const newStatus = shouldBeOn ? 'on' : 'off';
+
+      // Chỉ ghi vào DB nếu trạng thái thay đổi
+      if (newStatus !== lastAutoFanStatus) {
+        await db.collection('fan_commands').add({
+          status: newStatus,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          note: "Auto by Temp"
+        });
+        console.log(`[AUTO FAN] Change detected -> ${newStatus.toUpperCase()}`);
+        lastAutoFanStatus = newStatus;
+      }
     }
 
     // LOGIC AUTO CHO ĐÈN -> Ghi vào light_commands
