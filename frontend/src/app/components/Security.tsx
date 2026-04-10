@@ -1,72 +1,61 @@
-import { useState } from 'react';
 import { DoorOpen, DoorClosed, Clock, AlertTriangle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
-
-type ActivityLog = {
-  id: number;
-  action: string;
-  time: string;
-  type: 'open' | 'closed';
-};
+import { useSmartHome } from '../hooks/useSmartHome';
 
 export function Security() {
   const { t } = useLanguage();
-  const [doorOpen, setDoorOpen] = useState(false);
-  const [activityLog] = useState<ActivityLog[]>([
-    { id: 1, action: 'doorOpened', time: '22:15', type: 'open' },
-    { id: 2, action: 'doorClosed', time: '22:10', type: 'closed' },
-    { id: 3, action: 'doorOpened', time: '18:45', type: 'open' },
-    { id: 4, action: 'doorClosed', time: '18:30', type: 'closed' },
-    { id: 5, action: 'doorOpened', time: '14:20', type: 'open' },
-    { id: 6, action: 'doorClosed', time: '14:05', type: 'closed' },
-    { id: 7, action: 'doorOpened', time: '09:30', type: 'open' },
-    { id: 8, action: 'doorClosed', time: '09:15', type: 'closed' },
-  ]);
+  
+  // Lấy dữ liệu từ hook (
+  const { 
+    doorOpen, 
+    doorLogs, 
+    todayOpens, 
+    lastActivity 
+  } = useSmartHome();
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl mb-2">{t('security.title')}</h1>
+        <h1 className="text-4xl mb-2 font-bold">{t('security.title')}</h1>
         <p className="text-muted-foreground">{t('security.subtitle')}</p>
       </div>
 
       {/* Grid Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Door Status Card - Larger */}
+        {/* Door Status Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="lg:col-span-2 bg-card p-8 rounded-2xl border border-border shadow-lg"
+          className={`lg:col-span-2 p-8 rounded-3xl border transition-all duration-500 shadow-lg ${
+            doorOpen 
+            ? 'bg-red-500/5 border-red-500 shadow-red-500/10' 
+            : 'bg-card border-border'
+          }`}
         >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl">{t('security.doorStatus')}</h2>
-            <button
-              onClick={() => setDoorOpen(!doorOpen)}
-              className="px-6 py-3 bg-accent hover:bg-accent/80 rounded-xl transition-colors"
-            >
-              {t('security.toggleDoor')}
-            </button>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-2xl font-bold">{t('security.doorStatus')}</h2>
+            <div className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${
+              doorOpen ? 'bg-red-500 text-white animate-pulse' : 'bg-green-500/20 text-green-500'
+            }`}>
+              {doorOpen ? 'Security Breach' : 'System Secured'}
+            </div>
           </div>
 
-          <div className="flex items-center gap-6 mb-6">
+          <div className="flex items-center gap-8 mb-8">
             <div
-              className={`p-6 rounded-2xl transition-colors ${
-                doorOpen ? 'bg-[#EF4444]/20' : 'bg-green-500/20'
+              className={`p-8 rounded-3xl transition-all duration-500 ${
+                doorOpen ? 'bg-red-500 text-white shadow-lg shadow-red-500/30' : 'bg-green-500/10 text-green-500'
               }`}
             >
-              {doorOpen ? (
-                <DoorOpen className="w-16 h-16 text-[#EF4444]" />
-              ) : (
-                <DoorClosed className="w-16 h-16 text-green-500" />
-              )}
+              {doorOpen ? <DoorOpen size={64} /> : <DoorClosed size={64} />}
             </div>
             <div className="flex-1">
-              <div className="text-4xl mb-2">
+              <div className="text-5xl font-black mb-2 tracking-tight">
                 {doorOpen ? t('home.open') : t('home.closed')}
               </div>
-              <p className={`text-lg ${doorOpen ? 'text-[#EF4444]' : 'text-green-500'}`}>
+              <p className={`text-xl font-medium ${doorOpen ? 'text-red-500' : 'text-green-500'}`}>
                 {doorOpen ? t('security.doorOpen') : t('security.doorClosed')}
               </p>
             </div>
@@ -74,85 +63,79 @@ export function Security() {
 
           {doorOpen && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="flex items-center gap-4 bg-[#EF4444]/10 border border-[#EF4444]/20 p-6 rounded-xl"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="flex items-center gap-4 bg-red-500 text-white p-6 rounded-2xl shadow-xl shadow-red-500/20"
             >
-              <AlertTriangle className="w-6 h-6 text-[#EF4444]" />
-              <p className="text-[#EF4444]">
-                {t('security.alert')}
-              </p>
+              <AlertTriangle className="w-8 h-8 animate-bounce" />
+              <div>
+                <p className="font-bold text-lg">{t('security.alert')}</p>
+                <p className="text-sm opacity-90 text-nowrap">door open !</p>
+              </div>
             </motion.div>
           )}
         </motion.div>
 
         {/* Quick Stats */}
-        <div className="space-y-6">
+        <div className="grid grid-cols-1 gap-6">
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-card p-6 rounded-2xl border border-border"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="bg-card p-8 rounded-3xl border border-border flex flex-col justify-center relative overflow-hidden"
           >
-            <p className="text-sm text-muted-foreground mb-3">{t('security.todayOpens')}</p>
-            <div className="text-5xl text-[#38BDF8] mb-2">3</div>
-            <p className="text-xs text-muted-foreground">{t('security.doorActivity')}</p>
+             <div className="absolute -right-4 -bottom-4 opacity-5 text-[#38BDF8]"><DoorOpen size={120}/></div>
+            <p className="text-sm font-bold text-muted-foreground uppercase mb-4">{t('security.todayOpens')}</p>
+            <div className="text-6xl font-black text-[#38BDF8] mb-2">{todayOpens}</div>
+            <p className="text-xs font-medium text-muted-foreground italic">{t('security.doorActivity')}</p>
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="bg-card p-6 rounded-2xl border border-border"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-card p-8 rounded-3xl border border-border flex flex-col justify-center relative overflow-hidden"
           >
-            <p className="text-sm text-muted-foreground mb-3">{t('security.lastActivity')}</p>
-            <div className="text-5xl text-[#38BDF8] mb-2">22:15</div>
-            <p className="text-xs text-muted-foreground">{t('security.recentEvent')}</p>
+            <div className="absolute -right-4 -bottom-4 opacity-5 text-[#38BDF8]"><Clock size={120}/></div>
+            <p className="text-sm font-bold text-muted-foreground uppercase mb-4">{t('security.lastActivity')}</p>
+            <div className="text-6xl font-black text-[#38BDF8] mb-2">{lastActivity}</div>
+            <p className="text-xs font-medium text-muted-foreground italic">{t('security.recentEvent')}</p>
           </motion.div>
         </div>
       </div>
 
       {/* Activity Log */}
-      <div className="space-y-4">
-        <h2 className="text-2xl">{t('security.activityLog')}</h2>
+      <div className="space-y-6">
+        <h2 className="text-2xl font-bold flex items-center gap-2">
+          {t('security.activityLog')} 
+          <span className="text-xs bg-accent px-2 py-1 rounded-lg text-muted-foreground font-normal italic">Realtime Sync</span>
+        </h2>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="bg-card p-6 rounded-2xl border border-border shadow-lg"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {activityLog.map((log, index) => (
+        <div className="bg-card p-2 rounded-3xl border border-border shadow-inner">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {doorLogs.length > 0 ? doorLogs.map((log, index) => (
               <motion.div
                 key={log.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.3 + index * 0.05 }}
-                className="flex items-center gap-4 p-5 bg-accent rounded-xl hover:bg-accent/80 transition-colors"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="flex items-center gap-4 p-4 bg-accent/30 rounded-2xl hover:bg-accent/50 transition-all border border-transparent hover:border-border"
               >
-                <div
-                  className={`p-3 rounded-lg ${
-                    log.type === 'open' ? 'bg-[#EF4444]/20' : 'bg-green-500/20'
-                  }`}
-                >
-                  {log.type === 'open' ? (
-                    <DoorOpen className="w-5 h-5 text-[#EF4444]" />
-                  ) : (
-                    <DoorClosed className="w-5 h-5 text-green-500" />
-                  )}
+                <div className={`p-3 rounded-xl ${log.status === 'open' ? 'bg-red-500/20 text-red-500' : 'bg-green-500/20 text-green-500'}`}>
+                  {log.status === 'open' ? <DoorOpen size={20} /> : <DoorClosed size={20} />}
                 </div>
                 <div className="flex-1">
-                  <div className="text-sm mb-1">{t(`security.${log.action}`)}</div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3 text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">{log.time}</p>
+                  <div className="text-sm font-bold">{t(`security.${log.action}`)}</div>
+                  <div className="flex items-center gap-2 opacity-60">
+                    <Clock size={12} />
+                    <p className="text-xs font-medium">{log.time}</p>
                   </div>
                 </div>
               </motion.div>
-            ))}
+            )) : (
+                <div className="col-span-2 p-12 text-center text-muted-foreground italic">No activity recorded.</div>
+            )}
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
