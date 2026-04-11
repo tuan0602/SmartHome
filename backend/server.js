@@ -26,7 +26,7 @@ const initDatabase = async () => {
     console.log("📝 Đã khởi tạo cấu hình Pomodoro trên Firebase");
   }
 
-  // 2. Init Security Door 
+  //Init Security Door 
   const doorRef = db.collection('security').doc('door');
   const doorDoc = await doorRef.get();
   if (!doorDoc.exists) {
@@ -103,13 +103,13 @@ const updateDoorSecurity = async (distance) => {
   if (currentStatus !== lastDoorStatus) {
     console.log(`🛡️ [SECURITY] Cảnh báo: Cửa đang ${currentStatus === 'open' ? 'MỞ 🔴' : 'ĐÓNG 🟢'}`);
     
-    // 1. Cập nhật trạng thái tức thời để Web hiển thị
+    // Cập nhật trạng thái tức thời để Web hiển thị
     await db.collection('security').doc('door').set({
       status: currentStatus,
       lastChanged: admin.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    // 2. Ghi vào lịch sử sự kiện (Activity Log)
+    // Ghi vào lịch sử sự kiện (Activity Log)
     await db.collection('door_events').add({
       event: currentStatus === 'open' ? 'Cửa bị mở' : 'Cửa đã đóng',
       status: currentStatus,
@@ -123,38 +123,63 @@ const updateDoorSecurity = async (distance) => {
 let logCounter = 0;
 let lastAutoFanStatus = null;
 let lastAutoLightStatus = null;
+let lastNotifyDoorStatus = 'closed';
+let lastNotifyTempStatus = 'normal';
 
 // --- VÒNG LẶP HỆ THỐNG ---
 const runSystemLoop = async () => {
   try {
-    // 1. Giả lập cảm biến Môi trường
-    const temp = Math.floor(Math.random() * 10) + 25;
+// ---GIẢ LẬP DỮ LIỆU ---
+    const temp = Math.floor(Math.random() * 10) + 25; // 25-35 độ
     const hum = Math.floor(Math.random() * 20) + 60;
+    const doorDistance = Math.random() > 0.8 ? 50 : 5; // Giả lập 20% khả năng cửa mở
+    const currentDoorStatus = doorDistance > 15 ? 'open' : 'closed';
 
-    // 2. Giả lập cảm biến Khoảng cách (Cửa)
-    // Để test: thỉnh thoảng (20%) giả lập khoảng cách xa (50cm) là cửa mở
-    const doorDistance = Math.random() > 0.8 ? 50 : 5; 
-    await updateDoorSecurity(doorDistance);
+    // --- LOGIC TỰ ĐỘNG SINH THÔNG BÁO (NOTIFICATIONS) ---
+    
+    // Kiểm tra thông báo Cửa
+    if (currentDoorStatus !== lastNotifyDoorStatus) {
+      // Chỉ tạo thông báo khi trạng thái THAY ĐỔI
+      await db.collection('notifications').add({
+        title: currentDoorStatus === 'open' ? 'doorOpened' : 'doorClosed',
+        message: currentDoorStatus === 'open' ? 'doorOpenedAt' : 'doorClosedAt',
+        type: 'door',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+      console.log(`📢 [NOTIFY] Trạng thái cửa thay đổi: ${currentDoorStatus.toUpperCase()}`);
+      lastNotifyDoorStatus = currentDoorStatus;
+    }
 
-    // 3. Cập nhật dữ liệu sensor hiện tại
+    // Kiểm tra thông báo Nhiệt độ (Ngưỡng 32 độ)
+    const tempThreshold = 32;
+    if (temp > tempThreshold && lastNotifyTempStatus === 'normal') {
+      await db.collection('notifications').add({
+        title: 'tempAlert',
+        message: 'tempExceeded',
+        type: 'temperature',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+      lastNotifyTempStatus = 'alert';
+      console.log("📢 [NOTIFY] Cảnh báo nhiệt độ cao!");
+    } else if (temp <= tempThreshold && lastNotifyTempStatus === 'alert') {
+      lastNotifyTempStatus = 'normal';
+    }
+
+    // --- 4. CẬP NHẬT DỮ LIỆU SENSOR HIỆN TẠI ---
     await db.collection('sensor_data').doc('current').set({
       temperature: temp,
       humidity: hum,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // 4. Ghi LOGS định kỳ (60 giây/lần)
-    logCounter++;
-    if (logCounter >= 6) {
-      await db.collection('sensor_logs').add({
-        temperature: temp, humidity: hum,
-        timestamp: admin.firestore.FieldValue.serverTimestamp()
-      });
-      console.log(`📊 [LOG] Đã lưu lịch sử cảm biến vào sensor_logs`);
-      logCounter = 0;
-    }
+    // Gọi hàm cập nhật security door
+    await updateDoorSecurity(doorDistance);
 
-    console.log(`🌡️ Sensor: ${temp}°C | 🛡️ Door: ${lastDoorStatus.toUpperCase()}`);
+    console.log(`🌡️ Update: ${temp}°C | 🚪 Door: ${currentDoorStatus.toUpperCase()}`);
 
     // --- LOGIC AUTO FAN ---
     if (currentSettings.fanMode === 'auto') {
@@ -188,7 +213,22 @@ const runSystemLoop = async () => {
         lastAutoLightStatus = newStatus;
       }
     }
-
+    console.clear();
+    console.log("=========================================");
+    console.log("   🏠 SMART HOME CENTRAL CONTROLLER      ");
+    console.log(`   Time: ${new Date().toLocaleTimeString()}               `);
+    console.log("=========================================");
+    console.log(`🌡️  TEMP:  ${temp}°C | 💧 HUM: ${hum}%`);
+    console.log(`🚪 DOOR:  [ ${currentDoorStatus.toUpperCase()} ]`);
+    console.log("-----------------------------------------");
+    console.log(`🌀 FAN:   MODE: ${currentSettings.fanMode.toUpperCase()} | STATUS: ${lastAutoFanStatus}`);
+    console.log(`💡 LIGHT: MODE: ${currentSettings.lightMode.toUpperCase()} | STATUS: ${lastAutoLightStatus}`);
+    
+    if (lastPomoSignal !== null) {
+        const pStatus = lastPomoSignal === 1 ? "🔥 FOCUS" : (lastPomoSignal === 0 ? "☕ BREAK" : "💤 IDLE");
+        console.log(`⏳ POMO:  ${pStatus}`);
+    }
+    console.log("=========================================");
   } catch (error) {
     console.error("❌ Lỗi System Loop:", error);
   }

@@ -1,226 +1,177 @@
 import { useState } from 'react';
-import { Bell, DoorOpen, Thermometer, Mail, MessageSquare, AlertTriangle } from 'lucide-react';
+import { Bell, DoorOpen, Thermometer, Mail, MessageSquare, AlertTriangle, CheckCheck, Trash2 } from 'lucide-react';
 import { Switch } from './ui/switch';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useLanguage } from '../contexts/LanguageContext';
-
-type Notification = {
-  id: number;
-  title: string;
-  message: string;
-  time: string;
-  type: 'door' | 'temperature' | 'alert';
-  read: boolean;
-};
+import { useNotifications } from '../hooks/useNotifications';
+import { useNavigate } from 'react-router';
 
 export function Notifications() {
   const { t } = useLanguage();
   const [gmailEnabled, setGmailEnabled] = useState(true);
   const [telegramEnabled, setTelegramEnabled] = useState(false);
+  const navigate = useNavigate();
+  
+  // Lấy dữ liệu và hàm từ Hook 
+  const { notifications, markAsRead, deleteNotification } = useNotifications();
 
-  const [notifications] = useState<Notification[]>([
-    {
-      id: 1,
-      title: 'doorOpened',
-      message: 'doorOpenedAt',
-      time: '2m ago',
-      type: 'door',
-      read: false,
-    },
-    {
-      id: 2,
-      title: 'tempAlert',
-      message: 'tempExceeded',
-      time: '15m ago',
-      type: 'temperature',
-      read: false,
-    },
-    {
-      id: 3,
-      title: 'doorClosed',
-      message: 'doorClosedAt',
-      time: '3h ago',
-      type: 'door',
-      read: true,
-    },
-    {
-      id: 4,
-      title: 'securityAlert',
-      message: 'doorOpenTooLong',
-      time: '5h ago',
-      type: 'alert',
-      read: true,
-    },
-    {
-      id: 5,
-      title: 'tempNormal',
-      message: 'tempReturned',
-      time: '6h ago',
-      type: 'temperature',
-      read: true,
-    },
-    {
-      id: 6,
-      title: 'doorOpened',
-      message: 'doorOpenedAt',
-      time: '8h ago',
-      type: 'door',
-      read: true,
-    },
-  ]);
+  const handleNotificationClick = async (n: any) => {
+    // Đánh dấu đã đọc trên Firebase
+    if (!n.read) await markAsRead(n.id);
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'door':
-        return <DoorOpen className="w-5 h-5" />;
-      case 'temperature':
-        return <Thermometer className="w-5 h-5" />;
-      case 'alert':
-        return <AlertTriangle className="w-5 h-5" />;
-      default:
-        return <Bell className="w-5 h-5" />;
+    // Điều hướng thông minh
+    if (n.type === 'door' || n.type === 'alert') {
+      navigate('/security'); 
+    } else if (n.type === 'temperature') {
+      navigate('/'); 
     }
   };
 
-  const getColor = (type: string) => {
+  const getIcon = (type: string) => {
     switch (type) {
-      case 'door':
-        return 'bg-[#38BDF8]/20 text-[#38BDF8]';
-      case 'temperature':
-        return 'bg-[#FACC15]/20 text-[#FACC15]';
-      case 'alert':
-        return 'bg-[#EF4444]/20 text-[#EF4444]';
-      default:
-        return 'bg-muted text-foreground';
+      case 'door': return <DoorOpen size={20} />;
+      case 'temperature': return <Thermometer size={20} />;
+      case 'alert': return <AlertTriangle size={20} />;
+      default: return <Bell size={20} />;
+    }
+  };
+
+  const getColor = (type: string, read: boolean) => {
+    if (read) return 'bg-muted/50 text-muted-foreground';
+    switch (type) {
+      case 'door': return 'bg-sky-500/20 text-sky-500';
+      case 'temperature': return 'bg-yellow-500/20 text-yellow-500';
+      case 'alert': return 'bg-red-500/20 text-red-500';
+      default: return 'bg-blue-500/20 text-blue-500';
     }
   };
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl mb-2">{t('notifications.title')}</h1>
-        <p className="text-muted-foreground">{t('notifications.subtitle')}</p>
+    <div className="p-8 max-w-7xl mx-auto h-screen flex flex-col">
+      {/* Header  */}
+      <div className="flex justify-between items-center mb-10 shrink-0">
+        <div>
+          <h1 className="text-4xl font-black mb-2 tracking-tight">{t('notifications.title')}</h1>
+          <p className="text-muted-foreground">{t('notifications.subtitle')}</p>
+        </div>
+        
+        <button className="flex items-center gap-2 text-sm font-bold text-sky-500 hover:bg-sky-500/10 px-5 py-2.5 rounded-full transition-all border border-sky-500/20">
+          <CheckCheck size={18} />
+          {t('notifications.markAllRead')}
+        </button>
       </div>
 
-      {/* Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-        {/* Notification Channels */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-card p-6 rounded-2xl border border-border shadow-lg space-y-6"
-        >
-          <h2 className="text-xl">{t('notifications.channels')}</h2>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-[#EF4444]/20 rounded-xl">
-                <Mail className="w-6 h-6 text-[#EF4444]" />
+      {/* Main Content Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 min-h-0">
+        {/* Cột trái: Settings & Stats  */}
+        <div className="space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }} 
+            animate={{ opacity: 1, x: 0 }} 
+            className="bg-card p-6 rounded-3xl border border-border shadow-xl"
+          >
+            <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
+              <Bell size={20} className="text-sky-500" />
+              {t('notifications.channels')}
+            </h2>
+            
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <Mail className="text-red-500" />
+                  <span className="font-bold text-sm">Gmail</span>
+                </div>
+                <Switch checked={gmailEnabled} onCheckedChange={setGmailEnabled} />
               </div>
-              <div>
-                <div className="text-sm">Gmail</div>
-                <p className="text-xs text-muted-foreground">
-                  {gmailEnabled ? t('notifications.enabled') : t('notifications.disabled')}
-                </p>
-              </div>
-            </div>
-            <Switch checked={gmailEnabled} onCheckedChange={setGmailEnabled} />
-          </div>
 
-          <div className="h-px bg-border" />
-
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-[#38BDF8]/20 rounded-xl">
-                <MessageSquare className="w-6 h-6 text-[#38BDF8]" />
-              </div>
-              <div>
-                <div className="text-sm">Telegram</div>
-                <p className="text-xs text-muted-foreground">
-                  {telegramEnabled ? t('notifications.enabled') : t('notifications.disabled')}
-                </p>
+              <div className="flex items-center justify-between p-4 bg-muted/30 rounded-2xl">
+                <div className="flex items-center gap-3">
+                  <MessageSquare className="text-sky-400" />
+                  <span className="font-bold text-sm">Telegram</span>
+                </div>
+                <Switch checked={telegramEnabled} onCheckedChange={setTelegramEnabled} />
               </div>
             </div>
-            <Switch checked={telegramEnabled} onCheckedChange={setTelegramEnabled} />
+          </motion.div>
+
+          <div className="bg-card p-8 rounded-3xl border border-border shadow-md relative overflow-hidden">
+             <div className="absolute -right-4 -bottom-4 opacity-5 text-sky-500 pointer-events-none">
+                <Bell size={120}/>
+             </div>
+             <p className="text-xs font-black text-muted-foreground uppercase mb-2">{t('notifications.unread')}</p>
+             <div className="text-6xl font-black text-sky-500 tracking-tighter">
+               {notifications.filter(n => !n.read).length}
+             </div>
+             <p className="text-xs text-muted-foreground mt-2 italic">{t('notifications.newNotifications')}</p>
           </div>
-        </motion.div>
-
-        {/* Stats */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-card p-6 rounded-2xl border border-border"
-        >
-          <p className="text-sm text-muted-foreground mb-3">{t('notifications.unread')}</p>
-          <div className="text-5xl text-[#38BDF8] mb-2">
-            {notifications.filter((n) => !n.read).length}
-          </div>
-          <p className="text-xs text-muted-foreground">{t('notifications.newNotifications')}</p>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-card p-6 rounded-2xl border border-border"
-        >
-          <p className="text-sm text-muted-foreground mb-3">{t('notifications.totalToday')}</p>
-          <div className="text-5xl text-[#38BDF8] mb-2">{notifications.length}</div>
-          <p className="text-xs text-muted-foreground">{t('notifications.allNotifications')}</p>
-        </motion.div>
-      </div>
-
-      {/* Notifications List */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl">{t('notifications.recentAlerts')}</h2>
-          <button className="text-sm text-[#38BDF8] hover:text-[#38BDF8]/80 transition-colors px-4 py-2 rounded-lg hover:bg-accent">
-            {t('notifications.markAllRead')}
-          </button>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="grid grid-cols-1 md:grid-cols-2 gap-4"
-        >
-          {notifications.map((notification, index) => (
-            <motion.div
-              key={notification.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 + index * 0.05 }}
-              className={`bg-card p-6 rounded-2xl border border-border shadow-lg hover:border-[#38BDF8]/50 transition-all cursor-pointer ${
-                !notification.read ? 'ring-1 ring-[#38BDF8]/30' : ''
-              }`}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`p-3 rounded-xl ${getColor(notification.type)}`}>
-                  {getIcon(notification.type)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">{t(`notification.${notification.title}`)}</span>
-                      {!notification.read && (
-                        <span className="w-2 h-2 bg-[#38BDF8] rounded-full" />
-                      )}
+        {/* Cột phải*/}
+        <div className="lg:col-span-2 flex flex-col min-h-0">
+          <h2 className="font-bold text-muted-foreground px-2 mb-4 shrink-0">
+            {t('notifications.recentAlerts')}
+          </h2>
+          
+          <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar max-h-[calc(100vh-300px)]">
+            <AnimatePresence mode='popLayout'>
+              {notifications.length > 0 ? (
+                notifications.map((n, i) => (
+                  <motion.div
+                    layout
+                    key={n.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ delay: i * 0.05 }}
+                    onClick={() => handleNotificationClick(n)}
+                    className={`group relative p-5 rounded-3xl border transition-all duration-300 cursor-pointer ${
+                      !n.read 
+                      ? 'bg-card border-sky-500/30 shadow-md ring-1 ring-sky-500/10' 
+                      : 'bg-muted/10 border-transparent opacity-60'
+                    } hover:shadow-xl hover:border-sky-500/50 hover:bg-card`}
+                  >
+                    <div className="flex items-start gap-5">
+                      <div className={`p-4 rounded-2xl shrink-0 transition-transform group-hover:scale-110 ${getColor(n.type, n.read)}`}>
+                        {getIcon(n.type)}
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-1">
+                          <h3 className={`font-bold text-base truncate ${!n.read ? 'text-foreground' : 'text-muted-foreground'}`}>
+                            {t(`notification.${n.title}`)}
+                          </h3>
+                          <span className="text-[10px] font-bold text-muted-foreground uppercase bg-muted px-2 py-0.5 rounded-md">
+                            {n.time}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
+                          {t(`notification.${n.message}`)}
+                        </p>
+                      </div>
+
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteNotification(n.id);
+                          }}
+                          className="p-2 hover:bg-red-500/10 hover:text-red-500 rounded-xl transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </div>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
-                      {notification.time}
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {t(`notification.${notification.message}`)} {notification.title === 'doorOpened' || notification.title === 'doorClosed' ? '22:15' : notification.title === 'tempAlert' ? '(32°C)' : notification.title === 'tempNormal' ? '(28°C)' : ''}
-                  </p>
+                  </motion.div>
+                ))
+              ) : (
+                <div className="text-center py-20 bg-muted/5 rounded-3xl border border-dashed border-border">
+                  <Bell size={48} className="mx-auto mb-4 text-muted-foreground opacity-20" />
+                  <p className="text-muted-foreground italic">{t('notifications.noNotifications')}</p>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
     </div>
   );
