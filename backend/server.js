@@ -99,7 +99,7 @@ const updateDoorSecurity = async (distance) => {
   // Ngưỡng: > 15cm được coi là cửa mở 
   const currentStatus = distance > 15 ? 'open' : 'closed';
 
-  // Chỉ xử lý khi trạng thái thay đổi để tránh spam database
+  // Xử lý khi trạng thái thay đổi để tránh spam database
   if (currentStatus !== lastDoorStatus) {
     console.log(`🛡️ [SECURITY] Cảnh báo: Cửa đang ${currentStatus === 'open' ? 'MỞ 🔴' : 'ĐÓNG 🟢'}`);
     
@@ -129,18 +129,21 @@ let lastNotifyTempStatus = 'normal';
 // --- VÒNG LẶP HỆ THỐNG ---
 const runSystemLoop = async () => {
   try {
-// ---GIẢ LẬP DỮ LIỆU ---
-    const temp = Math.floor(Math.random() * 10) + 25; // 25-35 độ
+    const sessionLogs = []; 
+
+    // 1. GIẢ LẬP DỮ LIỆU
+    const temp = Math.floor(Math.random() * 10) + 25; 
     const hum = Math.floor(Math.random() * 20) + 60;
-    const doorDistance = Math.random() > 0.8 ? 50 : 5; // Giả lập 20% khả năng cửa mở
+    const doorDistance = Math.random() > 0.8 ? 50 : 5; 
     const currentDoorStatus = doorDistance > 15 ? 'open' : 'closed';
 
-    // --- LOGIC TỰ ĐỘNG SINH THÔNG BÁO (NOTIFICATIONS) ---
-    
-    // Kiểm tra thông báo Cửa
+    // 2. LOGIC ĐỒNG BỘ CỬA 
     if (currentDoorStatus !== lastNotifyDoorStatus) {
-      // Chỉ tạo thông báo khi trạng thái THAY ĐỔI
-      await db.collection('notifications').add({
+      const batch = db.batch();
+      
+      // Tạo bản ghi cho tab Notification
+      const notifyRef = db.collection('notifications').doc();
+      batch.set(notifyRef, {
         title: currentDoorStatus === 'open' ? 'doorOpened' : 'doorClosed',
         message: currentDoorStatus === 'open' ? 'doorOpenedAt' : 'doorClosedAt',
         type: 'door',
@@ -148,13 +151,31 @@ const runSystemLoop = async () => {
         read: false,
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`📢 [NOTIFY] Trạng thái cửa thay đổi: ${currentDoorStatus.toUpperCase()}`);
+
+      // Tạo bản ghi cho tab Security (door_events)
+      const eventRef = db.collection('door_events').doc();
+      batch.set(eventRef, {
+        status: currentDoorStatus,
+        timestamp: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      // Cập nhật trạng thái tức thời cho trang Security 
+      const doorDocRef = db.collection('security').doc('door');
+      batch.set(doorDocRef, {
+        status: currentDoorStatus,
+        lastChanged: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      await batch.commit();
+      
+      sessionLogs.push(`📢 [SECURITY] Cửa vừa chuyển sang trạng thái: ${currentDoorStatus.toUpperCase()}`);
       lastNotifyDoorStatus = currentDoorStatus;
     }
 
-    // Kiểm tra thông báo Nhiệt độ (Ngưỡng 32 độ)
-    const tempThreshold = 32;
-    if (temp > tempThreshold && lastNotifyTempStatus === 'normal') {
+    // 3. LOGIC NHIỆT ĐỘ 
+    const dynamicThreshold = currentSettings.tempThreshold || 30;
+
+    if (temp > dynamicThreshold && lastNotifyTempStatus === 'normal') {
       await db.collection('notifications').add({
         title: 'tempAlert',
         message: 'tempExceeded',
@@ -164,56 +185,37 @@ const runSystemLoop = async () => {
         timestamp: admin.firestore.FieldValue.serverTimestamp()
       });
       lastNotifyTempStatus = 'alert';
-      console.log("📢 [NOTIFY] Cảnh báo nhiệt độ cao!");
-    } else if (temp <= tempThreshold && lastNotifyTempStatus === 'alert') {
+      sessionLogs.push(`🔥 [ALERT] Vượt ngưỡng ${dynamicThreshold}°C! (Hiện tại: ${temp}°C)`);
+    } else if (temp <= dynamicThreshold && lastNotifyTempStatus === 'alert') {
       lastNotifyTempStatus = 'normal';
+      sessionLogs.push(`✅ [SYSTEM] Nhiệt độ đã hạ dưới ngưỡng ${dynamicThreshold}°C`);
     }
 
-    // --- 4. CẬP NHẬT DỮ LIỆU SENSOR HIỆN TẠI ---
+    // 4. CẬP NHẬT SENSOR DATA 
     await db.collection('sensor_data').doc('current').set({
       temperature: temp,
       humidity: hum,
       timestamp: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    // Gọi hàm cập nhật security door
-    await updateDoorSecurity(doorDistance);
-
-    console.log(`🌡️ Update: ${temp}°C | 🚪 Door: ${currentDoorStatus.toUpperCase()}`);
-
-    // --- LOGIC AUTO FAN ---
+    // 5. LOGIC AUTO FAN 
     if (currentSettings.fanMode === 'auto') {
-      const shouldBeOn = temp > currentSettings.tempThreshold;
+      const shouldBeOn = temp > dynamicThreshold;
       const newStatus = shouldBeOn ? 'on' : 'off';
+      
       if (newStatus !== lastAutoFanStatus) {
         await db.collection('fan_commands').add({
           status: newStatus,
           timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          note: "Auto by Temp"
+          note: `Auto (Threshold: ${dynamicThreshold}°C)`
         });
         lastAutoFanStatus = newStatus;
+        sessionLogs.push(`🌀 [AUTO] Quạt ${newStatus.toUpperCase()} do ngưỡng ${dynamicThreshold}°C`);
       }
     }
 
-    // --- LOGIC AUTO LIGHT ---
-    if (currentSettings.lightMode === 'auto' && currentSettings.lightSchedule) {
-      const now = new Date();
-      const currentTimeStr = now.getHours().toString().padStart(2, '0') + ":" + 
-                             now.getMinutes().toString().padStart(2, '0');
-      const { on, off } = currentSettings.lightSchedule;
-      const shouldLightOn = checkSchedule(currentTimeStr, on, off);
-      const newStatus = shouldLightOn ? 'on' : 'off';
-
-      if (newStatus !== lastAutoLightStatus) {
-        await db.collection('light_commands').add({
-          status: newStatus,
-          timestamp: admin.firestore.FieldValue.serverTimestamp(),
-          note: "Auto by Schedule"
-        });
-        lastAutoLightStatus = newStatus;
-      }
-    }
-    console.clear();
+    // --- HIỂN THỊ TERMINAL ---
+    console.clear(); 
     console.log("=========================================");
     console.log("   🏠 SMART HOME CENTRAL CONTROLLER      ");
     console.log(`   Time: ${new Date().toLocaleTimeString()}               `);
@@ -221,14 +223,23 @@ const runSystemLoop = async () => {
     console.log(`🌡️  TEMP:  ${temp}°C | 💧 HUM: ${hum}%`);
     console.log(`🚪 DOOR:  [ ${currentDoorStatus.toUpperCase()} ]`);
     console.log("-----------------------------------------");
-    console.log(`🌀 FAN:   MODE: ${currentSettings.fanMode.toUpperCase()} | STATUS: ${lastAutoFanStatus}`);
-    console.log(`💡 LIGHT: MODE: ${currentSettings.lightMode.toUpperCase()} | STATUS: ${lastAutoLightStatus}`);
+    console.log(`🌀 FAN:   MODE: ${currentSettings.fanMode.toUpperCase()} | STATUS: ${lastAutoFanStatus || 'OFF'}`);
+    console.log(`💡 LIGHT: MODE: ${currentSettings.lightMode.toUpperCase()} | STATUS: ${lastAutoLightStatus || 'OFF'}`);
     
     if (lastPomoSignal !== null) {
         const pStatus = lastPomoSignal === 1 ? "🔥 FOCUS" : (lastPomoSignal === 0 ? "☕ BREAK" : "💤 IDLE");
         console.log(`⏳ POMO:  ${pStatus}`);
     }
     console.log("=========================================");
+    
+    // IN CÁC SỰ KIỆN PHÁT SINH TRONG PHIÊN NÀY
+    if (sessionLogs.length > 0) {
+        console.log("\n📝 [SỰ KIỆN MỚI]:");
+        sessionLogs.forEach(log => console.log(log));
+    } else {
+        console.log("\n🟢 Hệ thống hoạt động bình thường...");
+    }
+
   } catch (error) {
     console.error("❌ Lỗi System Loop:", error);
   }
