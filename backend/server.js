@@ -129,6 +129,10 @@ let lastNotifyTempStatus = 'normal';
 // --- VÒNG LẶP HỆ THỐNG ---
 const runSystemLoop = async () => {
   try {
+    // 1. LẤY THỜI GIAN CHUẨN VIỆT NAM 
+    const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Ho_Chi_Minh"}));
+    const currentTimeStr = now.getHours().toString().padStart(2, '0') + ":" + 
+                           now.getMinutes().toString().padStart(2, '0');
     const sessionLogs = []; 
 
     // 1. GIẢ LẬP DỮ LIỆU
@@ -212,8 +216,25 @@ const runSystemLoop = async () => {
         lastAutoFanStatus = newStatus;
         sessionLogs.push(`🌀 [AUTO] Quạt ${newStatus.toUpperCase()} do ngưỡng ${dynamicThreshold}°C`);
       }
-    }
+      // 6. LOGIC AUTO LIGHT (Bổ sung vào vòng lặp)
+    if (currentSettings.lightMode === 'auto' && currentSettings.lightSchedule) {
+      const { on, off } = currentSettings.lightSchedule;
+      const shouldLightOn = checkSchedule(currentTimeStr, on, off);
+      const newStatus = shouldLightOn ? 'on' : 'off';
 
+      // Chỉ thực hiện lệnh nếu trạng thái thay đổi để tránh spam Firebase
+      if (newStatus !== lastAutoLightStatus) {
+        await db.collection('light_commands').add({
+          status: newStatus,
+          timestamp: admin.firestore.FieldValue.serverTimestamp(),
+          note: "Auto by Schedule"
+        });
+        lastAutoLightStatus = newStatus;
+        sessionLogs.push(`💡 [AUTO LIGHT] Giờ: ${currentTimeStr} -> Chuyển đèn: ${newStatus.toUpperCase()}`);
+      }
+    }
+    }
+    
     // --- HIỂN THỊ TERMINAL ---
     console.clear(); 
     console.log("=========================================");
@@ -245,5 +266,5 @@ const runSystemLoop = async () => {
   }
 };
 
-setInterval(runSystemLoop, 10000);
+setInterval(runSystemLoop, 20000);
 console.log("🌟 Backend Smart Home (Security Door Integrated) đã sẵn sàng!");
